@@ -11,7 +11,10 @@ dotenv.config(); // Load .env first
 const app = express(); 
 
 // Define allowed frontend origins
-const allowedOrigins = ['https://member.dreamtripclub.com'];
+const allowedOrigins = [
+  'https://member.dreamtripclub.com',
+  'http://localhost:3000'
+];
 
 // Apply CORS config
 app.use(cors({
@@ -22,7 +25,7 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
+  credentials: true
 }));
 
 // Middlewares
