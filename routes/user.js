@@ -4,6 +4,8 @@ const { getToken, api } = require('../services/getToken');
 const axios = require('axios');
 const https = require('https');
 const qs = require('qs');
+app.use('/api/user', userRoutes);
+
 
 
 const apiBaseUrl = process.env.API_BASE_URL || 'https://servicehub.metasphere.global:8966/api/';
