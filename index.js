@@ -2,15 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
-const userRoutes = require('./routes/user');
-app.use('/api/user', userRoutes);
+const axios = require('axios'); // Added missing import
 
-
+// Initialize environment variables FIRST
 dotenv.config();
 
+// Create Express app
 const app = express();
 
-//  CORS CONFIGURATION
+// CORS Configuration
 const allowedOrigins = [
   'https://member.dreamtripclub.com',
   'http://localhost:3000'
@@ -31,38 +31,37 @@ app.use(cors({
 // Middlewares
 app.use(express.json());
 app.use(cookieParser());
-app.use('/api/user', userRoutes);
 
-// route import
+// Route imports (AFTER app initialization)
+const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
+
+// Routes
+app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 
+// Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// token handler.
+// Token handler
 const getToken = async () => {
-  const appkey = "41787349523ac4f6";
-  const appSecret = "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
+  const appkey = process.env.APP_KEY || "41787349523ac4f6"; // Move to env vars
+  const appSecret = process.env.APP_SECRET || "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
 
   try {
-    const res = await axios.post(`${process.env.API_BASE_URL}ClaimVoucher`, {
+    const res = await axios.post(`${process.env.API_BASE_URL}/ClaimVoucher`, { // Added missing /
       appkey,
       appSecret
     });
 
-    if (res.data && res.data.token) {
-      return res.data.token;
-    } else {
-      console.error("Token response missing:", res.data);
-      return null;
-    }
+    return res.data?.token || null;
   } catch (err) {
-    console.error("Error fetching token:", err.message);
+    console.error("Token error:", err.message);
     return null;
   }
 };
 
-module.exports.getToken = getToken;
+module.exports = { app, getToken }; // Better export pattern
