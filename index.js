@@ -4,33 +4,47 @@ const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
-const axios = require('axios'); // Needed for token handler
+const axios = require('axios');
 
-dotenv.config(); // Load .env first
+dotenv.config();
 
-const app = express(); 
+const app = express();
 
-// Define allowed frontend origins
+// 1. Fixed allowed origins (removed trailing slash)
 const allowedOrigins = [
   'https://member.dreamtripclub.com',
   'http://localhost:3000',
-  'https://loyalty-frontend-main.vercel.app/'
-
+  'https://loyalty-frontend-main.vercel.app' // Removed trailing slash
 ];
 
-// Apply CORS config
-app.use(cors({
+// 2. Enhanced CORS configuration
+const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check against allowed origins
+    if (allowedOrigins.some(allowedOrigin => 
+      origin === allowedOrigin || 
+      origin.startsWith(allowedOrigin.replace(/https?:\/\//, ''))
+    )) {
+      return callback(null, true);
     }
+    
+    console.error(`CORS Blocked: ${origin}`);
+    return callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
+// 3. Apply CORS middleware
+app.use(cors(corsOptions));
+
+// 4. Explicitly handle OPTIONS requests
+app.options('*', cors(corsOptions)); // Enable preflight for all routes
 
 // Middlewares
 app.use(express.json());
