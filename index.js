@@ -13,7 +13,9 @@ const app = express();
 // Define allowed frontend origins
 const allowedOrigins = [
   'https://member.dreamtripclub.com',
-  'http://localhost:3000'
+  'http://localhost:3000',
+  'https://loyalty-frontend-main.vercel.app/'
+
 ];
 
 // Apply CORS config
@@ -25,7 +27,7 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
 }));
 
 // Middlewares
