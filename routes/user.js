@@ -4,7 +4,7 @@ const { getToken, api } = require('../services/getToken');
 const axios = require('axios');
 const https = require('https');
 const qs = require('qs');
-app.use('/api/user', userRoutes);
+
 
 
 
