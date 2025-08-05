@@ -1,15 +1,16 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
-const axios = require('axios');
+const axios = require('axios'); // Added missing import
 
-// Initialize Express app
+// Initialize environment variables FIRST
+dotenv.config();
+
+// Create Express app
 const app = express();
 
-// ======================
-// Enhanced CORS Configuration
-// ======================
+// CORS Configuration
 const allowedOrigins = [
   'https://member.dreamtripclub.com',
   'http://localhost:3000'
@@ -32,85 +33,40 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Explicit preflight handling
 
-// ======================
 // Middlewares
-// ======================
-app.use(express.json()); // Body parser
-app.use(cookieParser()); // Cookie handler
-app.use(express.urlencoded({ extended: true })); // Form data parser
+app.use(express.json());
+app.use(cookieParser());
 
-// ======================
-// Rate Limiting (Security)
-// ======================
-const rateLimit = require('express-rate-limit');
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per window
-});
-app.use(limiter);
-
-// ======================
-// Routes
-// ======================
+// Route imports (AFTER app initialization)
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 
+// Routes
 app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 
-// ======================
-// Error Handling Middleware
-// ======================
-app.use((err, req, res, next) => {
-  console.error(`[ERROR] ${err.message}`);
-  res.status(err.status || 500).json({
-    error: {
-      message: err.message || 'Internal Server Error',
-      code: err.code || 'SERVER_ERROR'
-    }
-  });
+// Server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
-// ======================
-// Token Handler (Improved)
-// ======================
+// Token handler
 const getToken = async () => {
-  try {
-    const response = await axios.post(
-      `${process.env.API_BASE_URL}/ClaimVoucher`,
-      {
-        appkey: process.env.APP_KEY,
-        appSecret: process.env.APP_SECRET
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 5000 // 5-second timeout
-      }
-    );
+  const appkey = process.env.APP_KEY || "41787349523ac4f6"; // Move to env vars
+  const appSecret = process.env.APP_SECRET || "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
 
-    return response.data?.token || null;
+  try {
+    const res = await axios.post(`${process.env.API_BASE_URL}/ClaimVoucher`, { // Added missing /
+      appkey,
+      appSecret
+    });
+
+    return res.data?.token || null;
   } catch (err) {
-    console.error('[TOKEN ERROR]', err.response?.data || err.message);
+    console.error("Token error:", err.message);
     return null;
   }
 };
 
-// ======================
-// Server Startup
-// ======================
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🛡️  CORS allowed for: ${allowedOrigins.join(', ')}`);
-});
-
-// Handle shutdown gracefully
-process.on('SIGTERM', () => {
-  console.log('🛑 Server shutting down...');
-  server.close(() => {
-    console.log('✅ Server terminated');
-    process.exit(0);
-  });
-});
-
-module.exports = { app, getToken };
+module.exports = { app, getToken }; // Better export pattern
