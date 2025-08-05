@@ -24,10 +24,9 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     // Check against allowed origins
-    if (allowedOrigins.some(allowedOrigin => 
-      origin === allowedOrigin || 
-      origin.startsWith(allowedOrigin.replace(/https?:\/\//, ''))
-    )) {
+   if (allowedOrigins.includes(origin)) {
+  return callback(null, true);
+  } {
       return callback(null, true);
     }
     
