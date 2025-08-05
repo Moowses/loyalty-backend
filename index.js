@@ -16,22 +16,17 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
-const corsOptions = {
-  origin: (origin, callback) => {
+app.use(cors({
+  origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin); // Return SINGLE allowed origin
+      callback(null, true);
     } else {
-      console.warn(`[CORS] Blocked origin: ${origin}`);
+      console.error(`CORS blocked for origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Explicit preflight handling
+}));
 
 // Middlewares
 app.use(express.json());
