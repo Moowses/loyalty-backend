@@ -1,4 +1,5 @@
 // services/getToken.js
+require('dotenv').config();
 const axios = require('axios');
 const crypto = require('crypto');
 const https = require('https');

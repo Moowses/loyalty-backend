@@ -3,28 +3,43 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
+const authRoutes = require('./routes/auth');
+const axios = require('axios'); // Needed for token handler
 
+dotenv.config(); // Load .env first
 
-dotenv.config();
+const app = express(); 
 
-const app = express();
+// Define allowed frontend origins
+const allowedOrigins = ['https://member.dreamtripclub.com'];
+
+// Apply CORS config
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 
 // Middlewares
-app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
-app.use('/api/user', userRoutes);
 
-// route import
-const authRoutes = require('./routes/auth');
+// Routes
+app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 
+// Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// token handler.
+// Token Handler
 const getToken = async () => {
   const appkey = "41787349523ac4f6";
   const appSecret = "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
