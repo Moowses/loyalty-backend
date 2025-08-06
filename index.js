@@ -11,21 +11,9 @@ dotenv.config();
 const app = express();
 
 // CORS Configuration
-const allowedOrigins = [
-  'https://member.dreamtripclub.com',
-  'http://localhost:3000'
-];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.error(`CORS blocked for origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
+  origin: '*',
+  credentials: true
 }));
 
 // Middlewares
