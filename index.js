@@ -1,101 +1,72 @@
+// index.js
+
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const axios = require('axios');
 
-// 1. Environment Setup
-dotenv.config({
-  path: process.env.NODE_ENV === 'production' 
-    ? '.env.production' 
-    : '.env.development'
-});
+// Load environment variables
+dotenv.config();
 
-// 2. Express Initialization
+// Initialize Express app
 const app = express();
 
-// 3. Temporary CORS Bypass (Development Only)
-if (process.env.NODE_ENV !== 'production') {
-  app.use(cors({
-    origin: true, // Reflects request origin
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  }));
-  app.options('*', cors());
-} else {
-  // Production CORS (Strict)
-  const allowedOrigins = ['https://member.dreamtripclub.com'];
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true
-  }));
-}
+// Temporary CORS Bypass (for testing only)
+app.use(cors({
+  origin: (origin, callback) => {
+    callback(null, true); // Reflects all origins (bypass)
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// 4. Security Middlewares
+// Handle preflight OPTIONS requests globally
+app.options('*', cors());
+
+// Core middlewares
 app.use(express.json());
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
 
-// 5. Rate Limiting
-const limiter = require('express-rate-limit')({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP
-});
-app.use('/api/', limiter);
-
-// 6. Routes
+// Route handlers (loaded after app init)
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
+
+// Mount routes
 app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 
-// 7. Health Check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(` Server running on port ${PORT}`);
 });
 
-// 8. Error Handling
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
-
-// 9. Token Handler (Secure)
+// Token fetch helper — exposed for internal use
 const getToken = async () => {
+  const appkey = process.env.APP_KEY || "41787349523ac4f6";
+  const appSecret = process.env.APP_SECRET || "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
+
   try {
-    const { data } = await axios.post(
+    const response = await axios.post(
       `${process.env.API_BASE_URL}/ClaimVoucher`,
-      {
-        appkey: process.env.APP_KEY,
-        appSecret: process.env.APP_SECRET
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 5000 // 5s timeout
-      }
+      { appkey, appSecret }
     );
-    return data?.token || null;
+
+    const token = response.data?.token;
+
+    if (!token) {
+      console.warn(" Token not found in response:", response.data);
+      return null;
+    }
+
+    return token;
   } catch (err) {
-    console.error('Token Error:', err.response?.data || err.message);
+    console.error(" Error fetching token:", err.message);
     return null;
   }
 };
 
-// 10. Server Startup
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`
-   Server running in ${process.env.NODE_ENV || 'development'} mode
-   Port: ${PORT}
-   CORS: ${process.env.NODE_ENV === 'production' ? 'Strict' : 'Permissive'}
-  `);
-});
-
+// Export for testing or internal re-use
 module.exports = { app, getToken };
