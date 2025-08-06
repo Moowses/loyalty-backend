@@ -2,54 +2,100 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
-const axios = require('axios'); // Added missing import
+const axios = require('axios');
 
-// Initialize environment variables FIRST
-dotenv.config();
+// 1. Environment Setup
+dotenv.config({
+  path: process.env.NODE_ENV === 'production' 
+    ? '.env.production' 
+    : '.env.development'
+});
 
-// Create Express app
+// 2. Express Initialization
 const app = express();
 
-// CORS Configuration
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// 3. Temporary CORS Bypass (Development Only)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(cors({
+    origin: true, // Reflects request origin
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+  app.options('*', cors());
+} else {
+  // Production CORS (Strict)
+  const allowedOrigins = ['https://member.dreamtripclub.com'];
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true
+  }));
+}
 
-// Middlewares
+// 4. Security Middlewares
 app.use(express.json());
 app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
 
-// Route imports (AFTER app initialization)
+// 5. Rate Limiting
+const limiter = require('express-rate-limit')({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP
+});
+app.use('/api/', limiter);
+
+// 6. Routes
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
-
-// Routes
 app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 
-// Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+// 7. Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
-// Token handler
+// 8. Error Handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+// 9. Token Handler (Secure)
 const getToken = async () => {
-  const appkey = process.env.APP_KEY || "41787349523ac4f6"; // Move to env vars
-  const appSecret = process.env.APP_SECRET || "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
-
   try {
-    const res = await axios.post(`${process.env.API_BASE_URL}/ClaimVoucher`, { // Added missing /
-      appkey,
-      appSecret
-    });
-
-    return res.data?.token || null;
+    const { data } = await axios.post(
+      `${process.env.API_BASE_URL}/ClaimVoucher`,
+      {
+        appkey: process.env.APP_KEY,
+        appSecret: process.env.APP_SECRET
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 5000 // 5s timeout
+      }
+    );
+    return data?.token || null;
   } catch (err) {
-    console.error("Token error:", err.message);
+    console.error('Token Error:', err.response?.data || err.message);
     return null;
   }
 };
 
-module.exports = { app, getToken }; // Better export pattern
+// 10. Server Startup
+const PORT = process.env.PORT || 5000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+   Server running in ${process.env.NODE_ENV || 'development'} mode
+   Port: ${PORT}
+   CORS: ${process.env.NODE_ENV === 'production' ? 'Strict' : 'Permissive'}
+  `);
+});
+
+module.exports = { app, getToken };
