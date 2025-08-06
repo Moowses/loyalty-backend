@@ -191,11 +191,11 @@ router.post('/dashboard', async (req, res) => {
       message: 'Dashboard data retrieved',
       dashboard: {
         name: `${profile.firstname || ''} ${profile.lastname || ''}`.trim(),
-        tier: profile.meta_loyalty_tier || 'Unknown',
+        tier: profile.membershiptier || 'Unknown',
         membershipNo: profile.membershipno || '',
         profileId,
         totalPoints,
-        membershiptier,
+        membershiptier: profile.membershiptier || 'Unknown',
         history
       }
     });
