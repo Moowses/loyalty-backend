@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
+const bookingRoutes = require('./routes/booking');
 
 
 dotenv.config();
@@ -10,10 +11,11 @@ dotenv.config();
 const app = express();
 
 // Middlewares
-app.use(cors() );
+app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
+app.use('/api/booking', bookingRoutes);
 
 // route import
 const authRoutes = require('./routes/auth');
