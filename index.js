@@ -3,8 +3,9 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
-const bookingRoutes = require('./routes/booking');
-
+const bookingRoutes  = require('./routes/booking'); 
+const paymentsRoutes = require('./routes/payments');
+app.use('/api/auth', require('./routes/auth'));
 
 dotenv.config();
 
@@ -12,10 +13,12 @@ const app = express();
 
 // Middlewares
 app.use(cors());
+
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
+app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
 
 // route import
 const authRoutes = require('./routes/auth');
