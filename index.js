@@ -5,7 +5,6 @@ const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
-app.use('/api/auth', require('./routes/auth'));
 
 dotenv.config();
 
