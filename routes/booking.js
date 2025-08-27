@@ -10,14 +10,7 @@ const httpsAgent =  process.env.NODE_ENV === 'production'
    ? undefined
    : new https.Agent({ rejectUnauthorized: false });
 
-/** normalize yes/no for pet (your old pattern) */
-function asYesNo(value, fallback = 'no') {
-  const v = String(value ?? '').toLowerCase();
-  if (v === 'yes' || v === 'no') return v;
-  if (v === 'true' || v === '1') return 'yes';
-  if (v === 'false' || v === '0') return 'no';
-  return fallback;
-}
+
 
 /**
  * GET /api/booking/availability
@@ -25,117 +18,182 @@ function asYesNo(value, fallback = 'no') {
  * - Else if lat/lng present → getHotelRoomInfo (nearby list)
  *   Carries infants + pets through (pets as yes/no per your working version)
  */
+// helpers
+// helpers (keep these near the top of the file)
+const toNum = (v) => Number(String(v ?? 0).replace(/[^0-9.-]/g, '')) || 0;
+const asYesNo = (v, def = 'no') => {
+  const s = String(v ?? '').toLowerCase();
+  if (s === '1' || s === 'yes' || s === 'true') return 'yes';
+  if (s === '0' || s === 'no'  || s === 'false') return 'no';
+  return def;
+};
+
 router.get('/availability', async (req, res) => {
   const {
-    hotelId,
+    hotelId: hotelIdRaw,
+    hotelNo: hotelNoRaw,               // <-- NEW: allow hotelNo
     startDate, endDate, startTime, endTime,
     lng, lat,
     adult, adults,
     child, children,
     infant,
-    pet
+    pet,
+    currency,
   } = req.query;
 
   const ci = startDate || startTime;
-  const co = endDate || endTime;
-
+  const co = endDate   || endTime;
   if (!ci || !co) {
     return res.status(400).json({ success: false, message: 'Missing required dates (startDate/startTime and endDate/endTime).' });
   }
 
-  const A = Number(adults ?? adult ?? 1);
-  const C = Number(children ?? child ?? 0);
-  const I = Number(infant ?? 0);
+  const A   = Number(adults ?? adult ?? 1);
+  const C   = Number(children ?? child ?? 0);
+  const I   = Number(infant ?? 0);
   const PET = asYesNo(pet, 'no');
+  const CCY = String(currency || 'CAD').toUpperCase();
+
+  // Normalized identifiers
+  const hotelIdNum = (hotelIdRaw ?? '').toString().trim();  // e.g. "276301"
+  const hotelNo    = (hotelNoRaw ?? '').toString().trim();  // e.g. "YDG"
+  const hasSingle  = !!hotelIdNum || !!hotelNo;
 
   try {
     const token = await getToken();
     if (!token) return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
 
-    if (hotelId) {
-      const params = {
-        token, hotelId,
-        startTime: ci, endTime: co,
-        adults: A, children: C,
-        infaut: I,  // keeping your working param name
-        pet: PET
+    // ---------- SINGLE HOTEL (final pricing) ----------
+    if (hasSingle) {
+      // 1) Prefer the code if we have it (works reliably with upstream)
+      const tryOnce = async (idForUpstream) => {
+        const params = {
+          token,
+          hotelId: idForUpstream,      // upstream param name is hotelId, but it wants the CODE
+          startDate: ci,
+          endDate: co,
+          startTime: ci,
+          endTime: co,
+          adults: A,
+          children: C,
+          infaut: I,                   // keep their odd spelling
+          pet: PET,
+          currency: CCY,
+        };
+        return axios.post(apiBaseUrl + 'GetRateAndAvailability_Moblie', null, { params, httpsAgent });
       };
-      const response = await axios.post(apiBaseUrl + 'GetRateAndAvailability_Moblie', null, { params, httpsAgent });
-      return res.json({ success: true, data: response.data });
-    } else if (lng && lat) {
+
+      // First attempt: use hotelNo (code) if present, else numeric.
+      let up = await tryOnce(hotelNo || hotelIdNum);
+
+      // If empty AND we only tried numeric AND we also have a code, try again with the code.
+      const arr1 = Array.isArray(up?.data?.data) ? up.data.data : (up?.data?.data ? [up.data.data] : []);
+      if ((!arr1 || arr1.length === 0) && !hotelNo && hotelIdNum) {
+        // nothing we can do here without a code
+      } else if ((!arr1 || arr1.length === 0) && hotelNo && hotelIdNum && hotelNo !== hotelIdNum) {
+        up = await tryOnce(hotelNo);
+      }
+
+      const data = up?.data;
+      const arr  = Array.isArray(data?.data) ? data.data : (data?.data ? [data.data] : []);
+      let out;
+
+      // helper to build nightly map from details, if necessary
+      const buildDailyFromDetails = (details) => {
+        const map = {};
+        if (Array.isArray(details)) {
+          for (const d of details) {
+            const dt = String(d.date || d.Date || '').slice(0, 10);
+            const p  = toNum(d.price || d.Price);
+            if (dt) map[dt] = p;
+          }
+        }
+        return map;
+      };
+
+      if (arr.length) {
+        const first = arr[0];
+
+        // nightly sum
+        let dailyPrices = first?.dailyPrices && typeof first.dailyPrices === 'object'
+          ? Object.fromEntries(Object.entries(first.dailyPrices).map(([k, v]) => [k, toNum(v)]))
+          : buildDailyFromDetails(first?.details);
+
+        let roomSubtotal = Object.values(dailyPrices).reduce((a,b)=>a+toNum(b), 0);
+        if (roomSubtotal <= 0) roomSubtotal = toNum(first?.totalPrice);
+
+        // fees & taxes (new fields)
+        const petFeeAmount       = toNum(first?.petFeeAmount);
+        const cleaningFeeAmount  = toNum(first?.cleaningFee ?? first?.CleaningFee);
+        const vatAmount          = toNum(first?.Vat ?? first?.VAT ?? first?.vat);
+        const grossAmountUpstream= toNum(first?.GrossAmount || first?.grossAmount);
+
+        const grandTotal = roomSubtotal + petFeeAmount + cleaningFeeAmount + vatAmount;
+
+        out = {
+          result: 'succ',
+          flag: '0',
+          data: [{
+            hotelNo: first?.hotelNo ?? hotelNo ?? '',
+            RoomType: first?.RoomTypeName ?? first?.roomTypeName ?? '',
+            lng: first?.lng ?? '',
+            dailyPrices,
+            roomSubtotal,
+            petFeeAmount,
+            cleaningFeeAmount,
+            vatAmount,
+            grandTotal,
+            grossAmountUpstream,
+            hotelId: hotelIdNum || String(first?.roomTypeId || ''),
+            hotelName: first?.hotelName ?? '',
+            currencyCode: (first?.currencyCode || CCY).toUpperCase(),
+            lat: first?.lat ?? '',
+            roomTypeId: hotelIdNum || String(first?.roomTypeId || ''),
+            capacity: first?.Capacity ?? first?.capacity,
+          }],
+        };
+      } else {
+        out = { result: 'succ', flag: '0', data: 'No available rooms' };
+      }
+
+      return res.json({ success: true, data: out });
+    }
+
+    // ---------- NEARBY LIST (search results) ----------
+    if (lng && lat) {
       const form = qs.stringify({
         startDate: ci, endDate: co, lng, lat,
         adult: A, child: C, infant: I, pet: PET,
-        flag: 0, token
+        flag: 0, token,
       });
       const response = await axios.post(apiBaseUrl + 'getHotelRoomInfo', form, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         httpsAgent
       });
-      return res.json({ success: true, data: response.data });
-    } else {
-      return res.status(400).json({ success: false, message: 'Missing required parameters: either hotelId OR lat/lng.' });
+
+      // normalize new fee/tax fields if present
+      const d = response.data;
+      if (Array.isArray(d?.data)) {
+        for (const item of d.data) {
+          item.petFeeAmount      = toNum(item?.petFeeAmount);
+          item.cleaningFeeAmount = toNum(item?.cleaningFee ?? item?.CleaningFee);
+          item.vatAmount         = toNum(item?.Vat ?? item?.VAT ?? item?.vat);
+          if (item?.dailyPrices && typeof item.dailyPrices === 'object') {
+            const subtotal = Object.values(item.dailyPrices).reduce((a, b) => a + toNum(b), 0);
+            item.totalPrice = String(subtotal);
+          }
+        }
+      }
+
+      return res.json({ success: true, data: d });
     }
+
+    return res.status(400).json({ success: false, message: 'Missing required parameters: either hotelId OR lat/lng.' });
   } catch (err) {
     console.error('Availability API error:', err.response?.data || err.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch availability', error: err.response?.data || err.message });
   }
 });
 
-/**
- * POST /api/booking/quote
- * Double-check a single hotel’s current price before payment.
- * Body: { hotelId, startTime, endTime, adults, children }
- * Returns: { quoteId, currency, grossAmount, nights, details[] }
- */
-// POST /api/booking/quote
-router.post('/quote', async (req, res) => {
-  try {
-    let { hotelId, hotelNo, startTime, endTime, adults = 1, children = 0 } = req.body;
-
-    // Prefer hotelNo (code) if provided; otherwise assume caller passed the code in hotelId
-    const hotelCode = hotelNo || hotelId;
-    if (!hotelCode || !startTime || !endTime) {
-      return res.status(400).json({ success: false, message: 'hotelNo (or hotelId as code), startTime, endTime required' });
-    }
-
-    const token = await getToken();
-    const params = { token, hotelId: hotelCode, startTime, endTime, adults, children };
-
-    const { data } = await axios.post(
-      apiBaseUrl + 'GetRateAndAvailability_Moblie',
-      null,
-      { params, httpsAgent }
-    );
-
-    const first = (data?.data || [])[0] || {};
-    const petFeeAmount = Number(first.petFeeAmount || 0);
-
-    const quote = {
-      quoteId: `q_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      hotelId: hotelCode,
-      roomTypeId: first.RoomTypeId,
-      rateId: first.RateId,
-      currency: first.currencyCode || 'CAD',
-      grossAmount: Number(first.GrossAmount || 0),
-      petFeeAmount, // <-- now included
-      nights: Array.isArray(first.details) ? first.details.length : null,
-      details: first.details || [],
-      roomTypeName: first.RoomTypeName || '',
-      capacity: first.Capacity || '',
-      description: first.Description || ''
-    };
-
-    return res.json({ success: true, quote, raw: data });
-  } catch (err) {
-    console.error('Quote error:', err.response?.data || err.message);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to get quote',
-      error: err.response?.data || err.message
-    });
-  }
-});
 
 
 /**
