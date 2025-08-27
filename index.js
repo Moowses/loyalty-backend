@@ -10,8 +10,23 @@ dotenv.config();
 
 const app = express();
 
+const ORIGINS = [
+  'http://localhost:3000',               // dev
+  'https://member.dreamtripclub.com',    // prod front-end
+  'https://www.dreamtripclub.com',       // if needed
+];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    cb(null, ORIGINS.includes(origin));
+  },
+  credentials: true, // IMPORTANT for cookies
+}));
+app.set('trust proxy', 1);
+
 // Middlewares
-app.use(cors());
+//app.use(cors());
 
 app.use(express.json());
 app.use(cookieParser());
