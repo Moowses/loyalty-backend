@@ -32,20 +32,6 @@ app.use((req, res, next) => {
 });
 
 
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  res.header('Access-Control-Allow-Origin', origin);     // echo origin (not '*') so credentials work
-  res.header('Vary', 'Origin');                          // cache safety
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-
-  if (req.method === 'OPTIONS') return res.sendStatus(204); // happy preflight
-  next();
-});
-
-
 // Middlewares
 //app.use(cors());
 
