@@ -72,11 +72,11 @@ router.post('/login', async (req, res) => {
 });
 
 /** ME endpoint - SIMPLIFIED FOR NOW */
-// In routes/auth.js - ME endpoint
 router.get('/me', (req, res) => {
   const hasSession = req.cookies && req.cookies[COOKIE_NAME];
   return res.json({ 
-    loggedIn: !!hasSession  // ← This is what frontend expects
+    loggedIn: !!hasSession,
+    message: hasSession ? 'User authenticated' : 'Not authenticated'
   });
 });
 

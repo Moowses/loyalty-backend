@@ -292,7 +292,7 @@ router.post('/reservations', async (req, res) => {
 
     const allReservations = reservationRes.data?.data || [];
 
-    // Filter reservations by date
+    // Filter reservations by date/
     const now = new Date();
     const past = [];
     const upcoming = [];
