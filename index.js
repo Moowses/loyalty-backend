@@ -18,17 +18,33 @@ const ORIGINS = [
   'https://dreamtripclub.com'       // if needed
 ];
 
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    // Allow all subdomains of dreamtripclub.com
-    if (origin.endsWith('.dreamtripclub.com')) {
-      return cb(null, true);
-    }
-    cb(null, ORIGINS.includes(origin));
-  },
-  credentials: true,
-}));
+// DEV-ONLY CORS — permissive, credentials enabled
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.header('Access-Control-Allow-Origin', origin);     // echo origin (not '*')
+  res.header('Vary', 'Origin');
+  res.header('Access-Control-Allow-Credentials', 'true'); // 
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+  if (req.method === 'OPTIONS') return res.sendStatus(204); // preflight
+  next();
+});
+
+
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.header('Access-Control-Allow-Origin', origin);     // echo origin (not '*') so credentials work
+  res.header('Vary', 'Origin');                          // cache safety
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+  if (req.method === 'OPTIONS') return res.sendStatus(204); // happy preflight
+  next();
+});
+
 
 // Middlewares
 //app.use(cors());
