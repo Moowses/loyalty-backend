@@ -15,7 +15,7 @@ const ORIGINS = [
   'http://localhost:3000',               // dev
   'https://member.dreamtripclub.com',    // prod front-end
   'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com',       // if needed
+  'https://dreamtripclub.com'       // if needed
 ];
 
 app.use(cors({
