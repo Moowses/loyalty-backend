@@ -28,6 +28,26 @@ const asYesNo = (v, def = 'no') => {
   return def;
 };
 
+// --- NO-ROOMS detectors ---
+const isNoRoomsStub = (it) => {
+  const rt = String(it?.RoomType ?? '').toLowerCase();
+  const total = Number(String(it?.totalPrice ?? '0').replace(/[^0-9.-]/g,''));
+  return rt.includes('no available') || total <= 0;
+};
+
+const arrayIsNoRooms = (arr) => Array.isArray(arr) && arr.length > 0 && arr.every(isNoRoomsStub);
+
+const messageIsNoRooms = (dataLike) => {
+  const flag = String(dataLike?.flag ?? dataLike?.Flag ?? '').toLowerCase();
+  const msg  = String(dataLike?.message ?? dataLike?.Message ?? dataLike?.data ?? '').toLowerCase();
+  return flag === '0' && /no\s*available/.test(msg);
+};
+
+const NO_ROOMS_PAYLOAD = () => ({
+  success: true,
+  data: { result: 'succ', flag: '0', data: 'No available roomsssss' },
+});
+
 router.get('/availability', async (req, res) => {
   const {
     hotelId: hotelIdRaw,

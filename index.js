@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
+const authRoutes = require('./routes/auth');
 
 dotenv.config();
 
@@ -13,17 +14,21 @@ const app = express();
 const ORIGINS = [
   'http://localhost:3000',               // dev
   'https://member.dreamtripclub.com',    // prod front-end
-  'https://www.dreamtripclub.com',       // if needed
+  'https://www.dreamtripclub.com',
+  'https://dreamtripclub.com',       // if needed
 ];
 
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
+    // Allow all subdomains of dreamtripclub.com
+    if (origin.endsWith('.dreamtripclub.com')) {
+      return cb(null, true);
+    }
     cb(null, ORIGINS.includes(origin));
   },
-  credentials: true, // IMPORTANT for cookies
+  credentials: true,
 }));
-app.set('trust proxy', 1);
 
 // Middlewares
 //app.use(cors());
@@ -34,8 +39,6 @@ app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
 
-// route import
-const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 5000;
