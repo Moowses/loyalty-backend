@@ -11,25 +11,26 @@ dotenv.config();
 
 const app = express();
 
-const ORIGINS = [
-  'http://localhost:3000',               // dev
-  'https://member.dreamtripclub.com',    // prod front-end
+
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com'       // if needed
+  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
 ];
 
-// DEV-ONLY CORS — permissive, credentials enabled
-app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  res.header('Access-Control-Allow-Origin', origin);     // echo origin (not '*')
-  res.header('Vary', 'Origin');
-  res.header('Access-Control-Allow-Credentials', 'true'); // 
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 
-  if (req.method === 'OPTIONS') return res.sendStatus(204); // preflight
-  next();
-});
 
 
 // Middlewares
