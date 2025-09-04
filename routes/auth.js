@@ -8,21 +8,14 @@ const https = require('https');
 
 const API_BASE = 'https://servicehub.metasphere.global:8966/api/';
 const agent = new https.Agent({ rejectUnauthorized: false });
+const COOKIE_NAME = process.env.COOKIE_NAME || 'dtc_session';
 
-// ---- Cookie config (env-driven) ----
-const isProd = process.env.NODE_ENV === 'production';
-
-// prefer new env name; fall back to legacy if present
-const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || process.env.COOKIE_NAME || 'dtc_session';
-
-// Defaults: in prod, cross-site cookie (.dreamtripclub.com, SameSite=None, Secure)
-// in dev, localhost-friendly (no domain, SameSite=Lax, Secure=false)
-function cookieOptions() {
+// Cookie configuration
+function cookieOptions(req) {
   return {
     httpOnly: true,
-    secure: (process.env.SESSION_COOKIE_SECURE ?? (isProd ? 'true' : 'false')) === 'true',
-    sameSite: process.env.SESSION_COOKIE_SAMESITE || (isProd ? 'None' : 'Lax'),
-    domain: process.env.SESSION_COOKIE_DOMAIN || (isProd ? '.dreamtripclub.com' : undefined),
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
@@ -31,7 +24,7 @@ function cookieOptions() {
 /** LOGIN */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-
+  
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Email and password are required' });
   }
@@ -52,22 +45,36 @@ router.post('/login', async (req, res) => {
     const response = await axios.post(loginUrl, {}, { httpsAgent: agent });
 
     if (response.data.flag === '0') {
-      // Set cross-site session cookie
-      res.cookie(COOKIE_NAME, 'user-authenticated', cookieOptions());
-      return res.json({ success: true, loggedIn: true, message: 'Login successful' });
+      // Set a simple session cookie
+      res.cookie(COOKIE_NAME, 'user-authenticated', cookieOptions(req));
+      
+      return res.json({ 
+        success: true, 
+        loggedIn: true,
+        message: 'Login successful'
+      });
     } else {
-      return res.status(401).json({ success: false, loggedIn: false, message: 'Login failed' });
+      return res.status(401).json({ 
+        success: false, 
+        loggedIn: false,
+        message: 'Login failed'
+      });
     }
+
   } catch (error) {
     console.error('Login error:', error.message);
-    return res.status(500).json({ success: false, loggedIn: false, message: 'Server error' });
+    return res.status(500).json({ 
+      success: false, 
+      loggedIn: false,
+      message: 'Server error'
+    });
   }
 });
 
-/** ME */
+/** ME endpoint - SIMPLIFIED FOR NOW */
 router.get('/me', (req, res) => {
   const hasSession = req.cookies && req.cookies[COOKIE_NAME];
-  return res.json({
+  return res.json({ 
     loggedIn: !!hasSession,
     message: hasSession ? 'User authenticated' : 'Not authenticated'
   });
@@ -75,9 +82,7 @@ router.get('/me', (req, res) => {
 
 /** LOGOUT */
 router.post('/logout', (req, res) => {
-  // IMPORTANT: match domain/path to actually clear the cookie
-  const opts = cookieOptions();
-  res.clearCookie(COOKIE_NAME, { path: '/', domain: opts.domain });
+  res.clearCookie(COOKIE_NAME, { path: '/' });
   return res.json({ success: true, loggedIn: false });
 });
 

@@ -16,24 +16,19 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com',
+  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
 ];
-
 
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, origin);
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
+      callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-    
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200
+  credentials: true
 }));
 
 
@@ -53,4 +48,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
