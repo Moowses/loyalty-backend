@@ -13,20 +13,24 @@ const app = express();
 
 
 const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
   'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
   'https://dreamtripclub.com' 
 ];
 
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
+    console.log(origin)
     if (ALLOWED_ORIGINS.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
+  
   credentials: true
 }));
 
