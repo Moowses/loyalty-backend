@@ -10,38 +10,38 @@ const authRoutes = require('./routes/auth');
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 
-
-const ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'https://member.dreamtripclub.com',
-  'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
-];
-
+// Fixed CORS configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+  origin: [
+    'http://localhost:3000',
+    'https://member.dreamtripclub.com',
+    'https://www.member.dreamtripclub.com',
+    'https://dreamtripclub.com',
+    'https://www.dreamtripclub.com'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'Set-Cookie']
 }));
 
-
+// Handle preflight requests PROPERLY - FIXED THE CRASH
+// Replace the app.options line with this:
+app.options(/\.*/, (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cookie, Set-Cookie');
+  res.sendStatus(204);
+});
 
 // Middlewares
-//app.use(cors());
-
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
-app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
-
+app.use('/api/payments', paymentsRoutes);
 app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 5000;
