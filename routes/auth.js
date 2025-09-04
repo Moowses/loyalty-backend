@@ -13,7 +13,7 @@ const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'dtc_session';
 // Cookie configuration
 function cookieOptions(req) {
   return {
-     httpOnly: true,
+    httpOnly: true,
     secure: process.env.SESSION_COOKIE_SECURE === 'true',
     sameSite: process.env.SESSION_COOKIE_SAMESITE || 'Lax',
     domain: process.env.SESSION_COOKIE_DOMAIN || undefined,
