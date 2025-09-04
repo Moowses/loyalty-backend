@@ -12,38 +12,45 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
-// CORS configuration ONLY - let cors middleware handle preflight automatically
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
+// SIMPLIFIED CORS CONFIGURATION - Use string instead of array
+app.use((req, res, next) => {
+  const allowedOrigins = [
     'https://member.dreamtripclub.com',
     'https://www.member.dreamtripclub.com',
-    'https://dreamtripclub.com',
-    'https://www.dreamtripclub.com'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'Set-Cookie']
-}));
+    'http://localhost:3000'
+  ];
+  
+  const origin = req.headers.origin;
+  
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  
+  next();
+});;
 
-// REMOVE the app.options line completely - let cors middleware handle it
+app.use((req, res, next) => {
+  console.log('=== CORS DEBUG ===');
+  console.log('Origin:', req.headers.origin);
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  next();
+});
 
 // Middlewares
-
-
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/auth', authRoutes);
-app.use((req, res, next) => {
-  console.log('Request Origin:', req.headers.origin);
-  console.log('Request Method:', req.method);
-  console.log('Request Path:', req.path);
-  next();
-});
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
