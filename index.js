@@ -13,27 +13,26 @@ const app = express();
 app.set('trust proxy', 1);
 
 // MANUAL CORS HANDLING - MOST RELIABLE
+const cors = require('cors');
+
+app.use(cors({
+  origin: 'https://member.dreamtripclub.com',
+  credentials: true
+}));
+
+// Explicitly handle OPTIONS for all routes
+app.options('*', cors());
+
 app.use((req, res, next) => {
-  const allowedOrigins = [
-    'https://member.dreamtripclub.com',
-    'https://www.member.dreamtripclub.com',
-    'http://localhost:3000'
-  ];
-  
-  const origin = req.headers.origin;
-  
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  }
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  
+  // Monkey-patch res.send to log headers before sending
+  const originalSend = res.send;
+  res.send = function(body) {
+    console.log('=== RESPONSE HEADERS ===');
+    console.log('Access-Control-Allow-Origin:', res.getHeader('Access-Control-Allow-Origin'));
+    console.log('Access-Control-Allow-Credentials:', res.getHeader('Access-Control-Allow-Credentials'));
+    console.log('Status:', res.statusCode);
+    return originalSend.call(this, body);
+  };
   next();
 });
 
