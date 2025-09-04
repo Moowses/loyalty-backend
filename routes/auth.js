@@ -8,14 +8,15 @@ const https = require('https');
 
 const API_BASE = 'https://servicehub.metasphere.global:8966/api/';
 const agent = new https.Agent({ rejectUnauthorized: false });
-const COOKIE_NAME = process.env.COOKIE_NAME || 'dtc_session';
+const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'dtc_session';
 
 // Cookie configuration
 function cookieOptions(req) {
   return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+     httpOnly: true,
+    secure: process.env.SESSION_COOKIE_SECURE === 'true',
+    sameSite: process.env.SESSION_COOKIE_SAMESITE || 'Lax',
+    domain: process.env.SESSION_COOKIE_DOMAIN || undefined,
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
