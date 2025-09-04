@@ -17,14 +17,12 @@ const ALLOWED_ORIGINS = [
   'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
   'https://dreamtripclub.com',
-  'api.dreamtripclub.com' 
 ];
 
 
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    console.log(origin, "SHET")
     if (ALLOWED_ORIGINS.includes(origin)) {
       callback(null, origin);
     } else {
