@@ -12,62 +12,64 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
-// MANUAL CORS HANDLING - APPLY TO ALL RESPONSES
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    'https://member.dreamtripclub.com',
-    'https://www.member.dreamtripclub.com',
-    'http://localhost:3000'
-  ];
-  
-  const origin = req.headers.origin;
-  
-  // Apply CORS headers to ALL responses
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  }
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  
-  next();
-});
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'https://member.dreamtripclub.com',
+  'https://www.dreamtripclub.com',
+  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
+];
 
-app.use((req, res, next) => {
-  // Monkey-patch res.send to log headers before sending
-  const originalSend = res.send;
-  res.send = function(body) {
-    console.log('=== RESPONSE HEADERS ===');
-    console.log('Access-Control-Allow-Origin:', res.getHeader('Access-Control-Allow-Origin'));
-    console.log('Access-Control-Allow-Credentials:', res.getHeader('Access-Control-Allow-Credentials'));
-    console.log('Status:', res.statusCode);
-    return originalSend.call(this, body);
-  };
-  next();
-});
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 
-app.use((req, res, next) => {
-  console.log('=== CORS DEBUG ===');
-  console.log('Origin:', req.headers.origin);
-  console.log('Method:', req.method);
-  console.log('Path:', req.path);
-  next();
-});
+
 
 // Middlewares
+//app.use(cors());
+
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
-app.use('/api/payments', paymentsRoutes);
+app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
+
 app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// token handler.
+const getToken = async () => {
+  const appkey = "41787349523ac4f6";
+  const appSecret = "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
+
+  try {
+    const res = await axios.post(`${process.env.API_BASE_URL}ClaimVoucher`, {
+      appkey,
+      appSecret
+    });
+
+    if (res.data && res.data.token) {
+      return res.data.token;
+    } else {
+      console.error("Token response missing:", res.data);
+      return null;
+    }
+  } catch (err) {
+    console.error("Error fetching token:", err.message);
+    return null;
+  }
+};
+
+module.exports.getToken = getToken;
