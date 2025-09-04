@@ -11,19 +11,32 @@ const agent = new https.Agent({ rejectUnauthorized: false });
 const COOKIE_NAME = process.env.COOKIE_NAME || 'dtc_session';
 
 // Cookie configuration
+// routes/auth.js
 function cookieOptions(req) {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalhost = req.hostname.includes('localhost') || req.hostname === '127.0.0.1';
   
+  // For production (api.dreamtripclub.com)
+  if (isProduction) {
+    return {
+      httpOnly: true,
+      secure: true, // MUST be true for production
+      sameSite: 'none', // Required for cross-site in production
+      domain: '.dreamtripclub.com', // Allow all subdomains
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    };
+  }
+  
+  // For local development
   return {
     httpOnly: true,
-    secure: isProduction, // TRUE in production, FALSE in development
-    sameSite: isProduction ? 'none' : 'lax', // 'none' for production, 'lax' for development
-    domain: isProduction ? '.dreamtripclub.com' : undefined, // Only set domain in production
+    secure: false, // false for localhost
+    sameSite: 'lax', // lax for local development
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 }
-
 /** LOGIN */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
