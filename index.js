@@ -23,7 +23,7 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    console.log(origin)
+    console.log(origin, "SHET")
     if (ALLOWED_ORIGINS.includes(origin)) {
       callback(null, true);
     } else {
