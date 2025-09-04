@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
-
+const authRoutes = require('./routes/auth');
 dotenv.config();
 
 const app = express();
@@ -35,7 +35,7 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
 
 // route import
-const authRoutes = require('./routes/auth');
+
 app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 5000;
