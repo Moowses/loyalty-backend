@@ -12,7 +12,7 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
-// Fixed CORS configuration
+// CORS configuration ONLY - let cors middleware handle preflight automatically
 app.use(cors({
   origin: [
     'http://localhost:3000',
@@ -26,50 +26,26 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'Set-Cookie']
 }));
 
-// Handle preflight requests PROPERLY - FIXED THE CRASH
-// Replace the app.options line with this:
-app.options(/\.*/, (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cookie, Set-Cookie');
-  res.sendStatus(204);
-});
+// REMOVE the app.options line completely - let cors middleware handle it
 
 // Middlewares
+
+
 app.use(express.json());
 app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/auth', authRoutes);
+app.use((req, res, next) => {
+  console.log('Request Origin:', req.headers.origin);
+  console.log('Request Method:', req.method);
+  console.log('Request Path:', req.path);
+  next();
+});
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-// token handler.
-const getToken = async () => {
-  const appkey = "41787349523ac4f6";
-  const appSecret = "ftObPzm7cQyv2jpyxH9BXd3vBCr8Y-FGIoQsBRMpeX8";
-
-  try {
-    const res = await axios.post(`${process.env.API_BASE_URL}ClaimVoucher`, {
-      appkey,
-      appSecret
-    });
-
-    if (res.data && res.data.token) {
-      return res.data.token;
-    } else {
-      console.error("Token response missing:", res.data);
-      return null;
-    }
-  } catch (err) {
-    console.error("Error fetching token:", err.message);
-    return null;
-  }
-};
-
-module.exports.getToken = getToken;
