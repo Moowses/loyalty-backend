@@ -12,10 +12,13 @@ const COOKIE_NAME = process.env.COOKIE_NAME || 'dtc_session';
 
 // Cookie configuration
 function cookieOptions(req) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction, // TRUE in production, FALSE in development
+    sameSite: isProduction ? 'none' : 'lax', // 'none' for production, 'lax' for development
+    domain: isProduction ? '.dreamtripclub.com' : undefined, // Only set domain in production
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
