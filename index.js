@@ -6,24 +6,32 @@ const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
 const authRoutes = require('./routes/auth');
+
 dotenv.config();
 
 const app = express();
 
-const ORIGINS = [
-  'http://localhost:3000',               // dev
-  'https://member.dreamtripclub.com',    // prod front-end
-  'https://www.dreamtripclub.com',       // if needed
+
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'https://member.dreamtripclub.com',
+  'https://www.dreamtripclub.com',
+  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
 ];
 
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    cb(null, ORIGINS.includes(origin));
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
   },
-  credentials: true, // IMPORTANT for cookies
+  credentials: true
 }));
-app.set('trust proxy', 1);
+
+
 
 // Middlewares
 //app.use(cors());
@@ -33,8 +41,6 @@ app.use(cookieParser());
 app.use('/api/user', userRoutes);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes); // payments route updated august 14 2025
-
-// route import
 
 app.use('/api/auth', authRoutes);
 
