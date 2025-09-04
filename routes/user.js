@@ -141,23 +141,42 @@ router.post('/dashboard', async (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to retrieve access token' });
     }
 
-    // Step 1: Get user profile to retrieve meta_pfprofile_id
+    // Get user profile
     const profileRes = await api.post(
       'GetPrivateProfile',
-      qs.stringify({ email, token })
+      qs.stringify({ email, token, _: Date.now() })
     );
-    console.log('Full profile response:', profileRes.data);
 
-    const profile = profileRes.data?.data?.[0];
+     console.log('Profile API response:', JSON.stringify(profileRes.data, null, 2)); // ADD THIS
+
+    const profileData = profileRes.data;
+    let profile;
     
+    if (profileData.data && Array.isArray(profileData.data) && profileData.data.length > 0) {
+      profile = profileData.data[0];
+    } else if (profileData.result) {
+      profile = profileData.result;
+    } else {
+      profile = profileData;
+    }
+
+    // CRITICAL: Verify the returned email matches the requested email
+    if (profile.primaryemail && profile.primaryemail !== email) {
+      console.error('EMAIL MISMATCH ERROR:');
+      console.error('Requested email:', email);
+      console.error('Returned email:', profile.primaryemail);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server returned wrong user data. Please try again.' 
+      });
+    }
 
     if (!profile || !profile.meta_pfprofile_id) {
       return res.status(404).json({ success: false, message: 'Profile or profile ID not found' });
     }
 
     const profileId = profile.meta_pfprofile_id;
-    const fullName = `${profile.firstname} ${profile.lastname}`;
-    const membershiptier=profileRes.membershiptier || 'Unknown';
+    
     // Step 2: Get total points balance
     const statsRes = await api.post(
       'getProfileStatisticsInfo',
@@ -167,9 +186,12 @@ router.post('/dashboard', async (req, res) => {
         token
       })
     );
-    const totalPoints = statsRes.data?.result?.totalPointsBalance ?? 0;
+    
+    const totalPoints = statsRes.data?.result?.totalPointsBalance || 
+                       statsRes.data?.result?.TotalPoint || 
+                       0;
 
-    // Step 3 (Optional): Fetch points transaction history
+    // Step 3: Fetch points transaction history
     const transactionsRes = await api.post(
       'getPointsTransaction',
       qs.stringify({
@@ -182,14 +204,13 @@ router.post('/dashboard', async (req, res) => {
     );
 
     const history = transactionsRes.data?.data || [];
-      
 
-
-    // Final output
+    // Final output - INCLUDE EMAIL
     return res.json({
       success: true,
       message: 'Dashboard data retrieved',
       dashboard: {
+        email: email, // ADD THIS LINE
         name: `${profile.firstname || ''} ${profile.lastname || ''}`.trim(),
         tier: profile.membershiptier || 'Unknown',
         membershipNo: profile.membershipno || '',
@@ -279,10 +300,18 @@ router.post('/signup', async (req, res) => {
 //Trasaction
 
 router.post('/reservations', async (req, res) => {
-  const { email, token } = req.body;
+  // FIX: Add proper destructuring with default values
+  const { email, token } = req.body || {};
+  
+  console.log('Reservations request body:', req.body);
+  console.log('Reservations - email:', email);
+  console.log('Reservations - token:', token);
 
   if (!email || !token) {
-    return res.status(400).json({ success: false, message: 'Missing email or token' });
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Missing email or token' 
+    });
   }
 
   try {
@@ -292,7 +321,7 @@ router.post('/reservations', async (req, res) => {
 
     const allReservations = reservationRes.data?.data || [];
 
-    // Filter reservations by date/
+    // Filter reservations by date
     const now = new Date();
     const past = [];
     const upcoming = [];
@@ -316,7 +345,11 @@ router.post('/reservations', async (req, res) => {
     });
   } catch (err) {
     console.error('Reservation fetch error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 
