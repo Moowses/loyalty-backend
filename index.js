@@ -14,9 +14,6 @@ const app = express();
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
-  'https://member.dreamtripclub.com/*',
-  'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com' 
 ];
 
 app.use(cors({
