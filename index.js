@@ -12,22 +12,29 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
-// SIMPLIFIED CORS CONFIGURATION - Use string instead of array
-// SIMPLIFIED CORS CONFIGURATION
-app.use(cors({
-  origin: 'https://member.dreamtripclub.com', // SINGLE ORIGIN
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
-// EXPLICITLY HANDLE OPTIONS REQUESTS FOR ALL ROUTES
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://member.dreamtripclub.com');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.sendStatus(204);
+// MANUAL CORS HANDLING - MOST RELIABLE
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    'https://member.dreamtripclub.com',
+    'https://www.member.dreamtripclub.com',
+    'http://localhost:3000'
+  ];
+  
+  const origin = req.headers.origin;
+  
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  
+  next();
 });
 
 app.use((req, res, next) => {
