@@ -12,16 +12,31 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
-// MANUAL CORS HANDLING - MOST RELIABLE
-const cors = require('cors');
-
-app.use(cors({
-  origin: 'https://member.dreamtripclub.com',
-  credentials: true
-}));
-
-// Explicitly handle OPTIONS for all routes
-app.options('*', cors());
+// MANUAL CORS HANDLING - APPLY TO ALL RESPONSES
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    'https://member.dreamtripclub.com',
+    'https://www.member.dreamtripclub.com',
+    'http://localhost:3000'
+  ];
+  
+  const origin = req.headers.origin;
+  
+  // Apply CORS headers to ALL responses
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  
+  next();
+});
 
 app.use((req, res, next) => {
   // Monkey-patch res.send to log headers before sending
