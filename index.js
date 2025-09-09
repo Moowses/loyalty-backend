@@ -2,21 +2,27 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
+const signupRoutes = require('./routes/signup');
 const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
 const authRoutes = require('./routes/auth');
+//const testSignupRoutes = require('./routes/testsignup');
 
 dotenv.config();
 
 const app = express();
+
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
-  'https://dreamtripclub.com' // ← YOUR WORDPRESS SITE
+  'https://dreamtripclub.com',
+  'http://192.168.254.104' // ← YOUR WORDPRESS SITE
 ];
 
 app.use(cors({
@@ -38,6 +44,9 @@ app.use(cors({
 app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
 
 //app.use(cors());
+//test sign up with encryption
+//app.use('/api/testsignup', testSignupRoutes);
+app.use('/api/auth/signup', signupRoutes);
 
 app.use(express.json());
 

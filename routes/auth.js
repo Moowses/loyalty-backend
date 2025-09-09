@@ -21,12 +21,13 @@ function cookieOptions(req) {
   };
 }
 
+const crypto = require('crypto');
+
 /** LOGIN */
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  
-  console.log('LOGIN ATTEMPT - Received email:', email);
-  console.log('LOGIN ATTEMPT - Received password:', password ? '***' : 'missing');
+ const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '').trim();
+
   
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Email and password are required' });
@@ -35,41 +36,29 @@ router.post('/login', async (req, res) => {
   try {
     const token = await getToken();
     if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
+       return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
     }
+    const hashedPwd = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
 
     const loginUrl = `${API_BASE}LoginthroughEmail?` + qs.stringify({
       email,
-      membershippwd: password,
+      membershippwd: hashedPwd,
       flag: '0',
       token
     });
 
-    console.log('LOGIN - Calling API URL:', loginUrl);
-
     const response = await axios.post(loginUrl, {}, { httpsAgent: agent });
-    console.log('LOGIN - API Response:', JSON.stringify(response.data, null, 2));
 
     if (response.data.flag === '0') {
-      // Set session cookie AND email cookie for frontend
+      // Set a simple session cookie
       res.cookie(COOKIE_NAME, 'user-authenticated', cookieOptions(req));
-      res.cookie('email', email, { 
-        path: '/', 
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
-      });
-      
-      console.log('LOGIN SUCCESS - Setting email cookie:', email);
       
       return res.json({ 
         success: true, 
         loggedIn: true,
-        email: email,
         message: 'Login successful'
       });
     } else {
-      console.log('LOGIN FAILED - API flag not 0');
       return res.status(401).json({ 
         success: false, 
         loggedIn: false,
@@ -78,7 +67,7 @@ router.post('/login', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('LOGIN ERROR:', error.message);
+    console.error('Login error:', error.message);
     return res.status(500).json({ 
       success: false, 
       loggedIn: false,
@@ -99,7 +88,6 @@ router.get('/me', (req, res) => {
 /** LOGOUT */
 router.post('/logout', (req, res) => {
   res.clearCookie(COOKIE_NAME, { path: '/' });
-  res.clearCookie('email', { path: '/' }); // ADD THIS LINE
   return res.json({ success: true, loggedIn: false });
 });
 

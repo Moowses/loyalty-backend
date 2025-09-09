@@ -226,76 +226,7 @@ router.post('/dashboard', async (req, res) => {
   }
 });
 
-//sign up 
-
-router.post('/signup', async (req, res) => {
-  const { firstname, lastname, email, mobilenumber, password } = req.body;
-
-  if (!firstname || !lastname || !email || !mobilenumber || !password) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required fields'
-    });
-  }
-
-  try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Failed to retrieve access token' });
-    }
-
-    // Construct query params as required by RegisterMembership endpoint
-    const payload = {
-      salutation: 'Mr',
-      Firstname: firstname,
-      Lastname: lastname,
-      Emailaddress: email,
-      dateofbirth: '08/08/1988',
-      Nationality: 'Canadian',
-      Membershippwd: password,
-      Mailingaddress: 'N/A',
-      Postalcode: '0000',
-      City: 'N/A',
-      State: 'N/A',
-      Country: 'Canada',
-      Phonenumber: mobilenumber,
-      Mobilenumber: mobilenumber,
-      Contactpreference: 'email',
-      Communicationpreference: '111111',
-      Promotioncode: '',
-      flag: '0',
-      socialMediaType: '1',
-      token
-    };
-
-    const querystring = qs.stringify(payload);
-
-    const response = await axios.post(
-      `${apiBaseUrl}RegisterMembership?${querystring}`,
-      null,
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      }
-    );
-
-    const data = response.data;
-
-    if (data.flag === '0') {
-      return res.json({ success: true, message: 'Signup successful', result: data });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: data.message || 'Signup failed',
-        result: data
-      });
-    }
-  } catch (err) {
-    console.error('Signup error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
-  }
-});
-
+// sign up 
 
 //Trasaction
 
