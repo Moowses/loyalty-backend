@@ -64,33 +64,53 @@ router.post('/', async (req, res) => {
     });
 
     const data = resp.data;
-
-    if (data?.flag === '0') {
-      return res.status(201).json({
-        success: true,
-        message: 'success',
-        flag: data.flag,
-        result: data
-      });
-    }
-
-    // duplicate or other errors
-    if (/exist|duplicate/i.test(String(data?.message || data?.result || ''))) {
-      return res.status(409).json({ success: false, message: 'Account already exists', result: data });
-    }
-
-    return res.status(400).json({ success: false, message: data?.message || data?.result || 'Signup failed', result: data });
-
-  } catch (err) {
-    if (err.response) {
-      return res.status(err.response.status || 502).json({
-        success: false,
-        message: err.response.data?.message || 'CRM error',
-        result: err.response.data
-      });
-    }
-    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  if (data?.flag === '0') {
+    return res.status(201).json({
+      success: true,
+      message: 'success',
+      flag: data.flag
+      // (optional) result: data
+    });
   }
+
+  // Normalize "already exists"
+  if (code === 7 || /exist|duplicate/i.test(msg)) {
+    return res.status(409).json({
+      success: false,
+      code: 'ACCOUNT_EXISTS',
+      message: 'This account is already in our system. Please try logging in or contact our support team for assistance.'
+    });
+  }
+
+  // Generic CRM failure
+  return res.status(400).json({
+    success: false,
+    message: msg || 'Signup failed'
+    // (optional) result: data
+  });
+
+} catch (err) {
+  if (err.response) {
+    const r    = err.response.data || {};
+    const msg  = String(r?.message || r?.result || '');
+    const code = Number(r?.code ?? r?.resultcode ?? r?.errorCode);
+
+    // Catch duplicate when CRM throws instead of returning flag/message
+    if (code === 7 || /exist|duplicate/i.test(msg)) {
+      return res.status(409).json({
+        success: false,
+        code: 'ACCOUNT_EXISTS',
+        message: 'This account is already in our system. Please try logging in or contact our support team for assistance.'
+      });
+    }
+
+    return res.status(err.response.status || 502).json({
+      success: false,
+      message: msg || 'CRM error'
+    });
+  }
+  return res.status(500).json({ success: false, message: 'ACCOUNT_EXIST' });
+}
 });
 
 module.exports = router;
