@@ -226,6 +226,33 @@ router.get('/availability', async (req, res) => {
  *   payment: { token } // NMI Collect.js payment_token
  * }
  */
+
+function friendlyNmiMessage(nmi = {}) {
+  const text = String(nmi.resptext || nmi.responsetext || nmi.message || '').toLowerCase();
+  const code = String(nmi.respcode || nmi.response_code || '').toLowerCase();
+  const avs  = String(nmi.avsresponse || '').toUpperCase();
+  const cvv  = String(nmi.cvvresponse || nmi.cvverror || '').toUpperCase();
+
+  // Highest-signal reasons first
+  if (cvv && /N|P|S|U/.test(cvv)) {
+    return 'The security code (CVV) did not match. Please re-enter and try again.';
+  }
+  if (avs && /(N|C|I|P|S|U|R)/.test(avs)) {
+    return 'The billing address did not match the card on file. Please check your address and postal/ZIP code.';
+  }
+  if (text.includes('insufficient') || code === '51') {
+    return 'Insufficient funds. Please try another card or contact your bank.';
+  }
+  if (text.includes('do not honor') || code === '05') {
+    return 'Your bank declined the charge (Do Not Honor). Please try a different card or call your bank.';
+  }
+  if (text.includes('pick up') || code === '04') {
+    return 'This card was declined by the issuer. Please use a different card.';
+  }
+  // Fallback to gateway message (capitalized)
+  return (nmi.resptext || nmi.responsetext || nmi.message || 'Payment declined');
+}
+
       router.post('/confirm', async (req, res) => {
         try {
           const { quote, guest, payment } = req.body;
@@ -259,13 +286,24 @@ router.get('/availability', async (req, res) => {
 
     const form = new URLSearchParams({
       security_key: (process.env.NMI_API_KEY || 'SGCynJEQ8VjG2D2S2VjsM4XSdmEpGqG8').trim(),
-      type: 'sale',
-      amount: chargeAmount,
-      payment_token: payment.token,
-      currency,
-      orderid: `BK-${Date.now()}`
-    });
-    
+       type: 'sale',
+        amount: chargeAmount,
+        payment_token: payment.token,
+        currency,
+        orderid: `BK-${Date.now()}`,
+
+        // NEW (helps AVS/fraud scoring)
+        email: String(guest.email || ''),
+        billing_firstname: String(guest.firstName || ''),
+        billing_lastname: String(guest.lastName || ''),
+        billing_address1: String(guest.address || '').slice(0, 60),
+        billing_city: String(guest.city || ''),
+        billing_state: String(guest.guestState || guest.state || ''),
+        billing_zip: String(guest.postal || guest.zip || ''),
+        billing_country: String(guest.country || ''),
+        // optional: if you capture IP on FE and send it along
+        // ipaddress: req.ip, 
+});
 
   
 
@@ -290,9 +328,16 @@ router.get('/availability', async (req, res) => {
       nmi.response === '1' ||
       /approved/i.test(nmi.resptext || nmi.responsetext || '');
 
-    if (!approved) {
-      const msg = nmi.resptext || nmi.responsetext || nmi.message || 'Payment declined';
-      return res.status(402).json({ success: false, message: msg, nmi });
+      if (!approved) {
+      const friendly = friendlyNmiMessage(nmi);
+      return res.status(402).json({
+        success: false,
+        message: friendly,          // <-- friendlier message
+        code: nmi.respcode || nmi.response_code || null,
+        avs: nmi.avsresponse || null,
+        cvv: nmi.cvvresponse || nmi.cvverror || null,
+        nmi,                         
+      });
     }
 
     const transactionId = nmi.transactionid || nmi.transaction_id || null;
