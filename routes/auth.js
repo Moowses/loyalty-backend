@@ -141,25 +141,26 @@ router.get('/me', (req, res) => {
 
 /** LOGOUT */
 router.post('/logout', (req, res) => {
-  // Clear your session cookie
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  const baseCookie = {
+    path: '/',
+    domain: '.dreamtripclub.com', // important so it clears across member.dreamtripclub.com and dreamtripclub.com
+    secure: true,
+    sameSite: 'None',
+  };
 
-  // Optional: if you set other cookies with Domain=.dreamtripclub.com, expire them too
-  const baseCookie = 'Path=/; Domain=.dreamtripclub.com; Secure; SameSite=None';
-  res.setHeader('Set-Cookie', [
-    `session=; Max-Age=0; ${baseCookie}`,
-    `refresh=; Max-Age=0; ${baseCookie}`,
-  ]);
+  // clear the httpOnly session cookie
+  res.clearCookie(COOKIE_NAME, baseCookie);
 
-  // This tells the browser to clear storage for this origin (localStorage, sessionStorage, IndexedDB, cache, cookies)
+  // clear the profile cookies (non-httpOnly, accessible to client JS)
+  res.clearCookie('dtc_firstName', baseCookie);
+  res.clearCookie('dtc_lastName', baseCookie);
+  res.clearCookie('dtc_email', baseCookie);
+  res.clearCookie('dtc_membershipNo', baseCookie);
+
+  // tell browser to clear site data (extra belt & suspenders)
   res.setHeader('Clear-Site-Data', '"cookies", "storage", "cache"');
 
-  // CORS headers so WP or other subdomains can call this
-  res.setHeader('Access-Control-Allow-Origin', 'https://dreamtripclub.com');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  return res.status(204).end(); // No content
+  return res.json({ success: true, loggedIn: false });
 });
-
 
 module.exports = router;
