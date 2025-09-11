@@ -52,7 +52,6 @@ app.use('/api/auth/reset-password', resetPassword); // reset password route
 
 
 
-
 app.use(express.json());
 
 
