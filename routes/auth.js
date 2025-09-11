@@ -142,7 +142,16 @@ router.get('/me', (req, res) => {
 /** LOGOUT */
 router.post('/logout', (req, res) => {
   res.clearCookie(COOKIE_NAME, { path: '/' });
+    localStorage.removeItem('email');
+     localStorage.removeItem('firstname');
+    localStorage.removeItem('lastname');
+    localStorage.removeItem('primaryemail');
+    localStorage.removeItem('apiToken');
+    localStorage.removeItem('dashboardData');
+    localStorage.removeItem('dtc_auth_changed');
+    localStorage.removeItem('membershipno');
   return res.json({ success: true, loggedIn: false });
+  
 });
 
 module.exports = router;
