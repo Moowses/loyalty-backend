@@ -140,7 +140,6 @@ router.get('/me', (req, res) => {
 });
 
 /** LOGOUT */
-/** LOGOUT */
 router.post('/logout', (req, res) => {
   // Clear your session cookie
   res.clearCookie(COOKIE_NAME, { path: '/' });
