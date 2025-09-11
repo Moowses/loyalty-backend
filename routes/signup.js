@@ -77,7 +77,7 @@ router.post('/', async (req, res) => {
   if (code === 7 || /exist|duplicate/i.test(msg)) {
     return res.status(409).json({
       success: false,
-      code: 'ACCOUNT_EXISTS',
+      code: 'Account Already Exists, please try to login or reset your password',
       message: 'This account is already in our system. Please try logging in or contact our support team for assistance.'
     });
   }
