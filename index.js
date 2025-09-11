@@ -10,6 +10,8 @@ const authRoutes = require('./routes/auth');
 const resetPassword = require('./routes/reset-password');
 //const testSignupRoutes = require('./routes/testsignup');
 
+
+
 dotenv.config();
 
 const app = express();
@@ -49,6 +51,7 @@ app.use(express.urlencoded({ extended: true })); // for parsing application/x-ww
 //app.use('/api/testsignup', testSignupRoutes);
 app.use('/api/auth/signup', signupRoutes); // suignup route
 app.use('/api/auth/reset-password', resetPassword); // reset password route
+
 
 app.use(express.json());
 
