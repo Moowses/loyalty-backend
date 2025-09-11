@@ -8,6 +8,9 @@ const bookingRoutes  = require('./routes/booking');
 const paymentsRoutes = require('./routes/payments');
 const authRoutes = require('./routes/auth');
 const resetPassword = require('./routes/reset-password');
+const requestPasswordReset = require('./routes/request-password-reset');
+const rateLimit = require('express-rate-limit');
+
 //const testSignupRoutes = require('./routes/testsignup');
 
 
@@ -51,6 +54,21 @@ app.use(express.urlencoded({ extended: true })); // for parsing application/x-ww
 //app.use('/api/testsignup', testSignupRoutes);
 app.use('/api/auth/signup', signupRoutes); // suignup route
 app.use('/api/auth/reset-password', resetPassword); // reset password route
+ 
+
+// 20 requests per 15 minutes per IP (tune as you like)
+const resetLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 1,                  // 1 request per window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Please wait 5 minutes before requesting another reset link.',
+  },
+});
+
+app.use('/api/auth/request-password-reset', resetLimiter, requestPasswordReset); // request password reset route
 
 
 app.use(express.json());
