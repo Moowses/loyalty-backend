@@ -7,6 +7,7 @@ const userRoutes = require('./routes/user');
 const bookingRoutes  = require('./routes/booking'); 
 const paymentsRoutes = require('./routes/payments');
 const authRoutes = require('./routes/auth');
+const resetPassword = require('./routes/reset-password');
 //const testSignupRoutes = require('./routes/testsignup');
 
 dotenv.config();
@@ -46,7 +47,8 @@ app.use(express.urlencoded({ extended: true })); // for parsing application/x-ww
 //app.use(cors());
 //test sign up with encryption
 //app.use('/api/testsignup', testSignupRoutes);
-app.use('/api/auth/signup', signupRoutes);
+app.use('/api/auth/signup', signupRoutes); // suignup route
+app.use('/api/auth/reset-password', resetPassword); // reset password route
 
 app.use(express.json());
 
