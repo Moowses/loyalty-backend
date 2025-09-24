@@ -28,7 +28,8 @@ router.post('/', async (req, res) => {
   try {
     // token (still required by Meta)
     const token = await getToken();
-    if (!token) return res.status(502).json({ success: false, message: 'Upstream token unavailable' });
+    if (!token) return res.status(502).json({ success: false, message: 'Server Error, Please try again later' });
+   
 
     // hash password -> SHA-256 hex (Meta accepts)
     const hashedPwd = crypto.createHash('sha256').update(pw, 'utf8').digest('hex');
@@ -61,9 +62,13 @@ router.post('/', async (req, res) => {
     const resp = await axios.post(`${apiBaseUrl}RegisterMembership`, form, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       httpsAgent
+       
     });
 
     const data = resp.data;
+    console.log('[RegisterMembership] data:232323', JSON.stringify(resp.data.flag, null, 1),);
+
+    
   if (data?.flag === '0') {
     return res.status(201).json({
       success: true,
@@ -71,16 +76,13 @@ router.post('/', async (req, res) => {
       flag: data.flag
       // (optional) result: data
     });
-  }
-
-  // Normalize "already exists"
-  if (code === 7 || /exist|duplicate/i.test(msg)) {
-    return res.status(409).json({
-      success: false,
-      code: 'Account Already Exists, please try to login or reset your password',
-      message: 'This account is already in our system. Please try logging in or contact our support team for assistance.'
-    });
-  }
+  } else if (data?.flag === '7'){
+      return res.status(409).json({
+        success: false,
+        code: 'This Account Already Exists, please try to login or reset your password',
+        message: 'This account already exists. Please log in, reset your password, or contact support for help.'
+      });
+    }
 
   // Generic CRM failure
   return res.status(400).json({
@@ -90,26 +92,18 @@ router.post('/', async (req, res) => {
   });
 
 } catch (err) {
+    
   if (err.response) {
     const r    = err.response.data || {};
     const msg  = String(r?.message || r?.result || '');
     const code = Number(r?.code ?? r?.resultcode ?? r?.errorCode);
 
-    // Catch duplicate when CRM throws instead of returning flag/message
-    if (code === 7 || /exist|duplicate/i.test(msg)) {
-      return res.status(409).json({
-        success: false,
-        code: 'ACCOUNT_EXISTS',
-        message: 'This account is already in our system. Please try logging in or contact our support team for assistance.'
-      });
-    }
-
     return res.status(err.response.status || 502).json({
       success: false,
-      message: msg || 'CRM error'
+      message: msg || 'CRM error, Please Support.'
     });
   }
-  return res.status(500).json({ success: false, message: 'ACCOUNT_EXIST' });
+  return res.status(500).json({ success: false, message: 'Server Error, Please Support.' });
 }
 });
 

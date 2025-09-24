@@ -45,7 +45,7 @@ const messageIsNoRooms = (dataLike) => {
 
 const NO_ROOMS_PAYLOAD = () => ({
   success: true,
-  data: { result: 'succ', flag: '0', data: 'No available roomsssss' },
+  data: { result: 'succ', flag: '0', data: 'No available rooms' },
 });
 
 router.get('/availability', async (req, res) => {
