@@ -20,7 +20,7 @@ function headers() {
 function paymentsEndpoint(path) {
   // e.g., 'sale', 'authorize', 'capture', 'void', 'refund'
   return `${NMI_BASE_JSON}/api/v1/payments/${path}`;
-}
+} 
 
 /** ---------------------- Utility ---------------------- */
 function ensureAmount(a) {
@@ -47,12 +47,7 @@ router.get('/info', (_req, res) => {
 });
 
 /** ---------------------- SALE (charge immediately) ---------------------- */
-/**
- * Body: {
- *   amount, currency="CAD",
- *   paymentToken, orderId?, billing? { email, first_name, last_name, phone, address, city, country, postal? }
- * }
- */
+
 router.post('/sale', async (req, res) => {
   try {
     const { amount, currency = 'CAD', paymentToken, orderId, billing = {} } = req.body;
@@ -63,7 +58,10 @@ router.post('/sale', async (req, res) => {
       currency,
       order: { id: orderId || `ORD-${Date.now()}`, description: process.env.NMI_MERCHANT_DESC || 'Sale' },
       payment_token: paymentToken,
-      billing
+      billing,
+      merchant_defined_field_1: billing?.city || req.body.city || null, 
+      merchant_defined_field_2: req.body.profileId || null,             
+      merchant_defined_field_3: "WebApp"     
     };
 
     const { data } = await axios.post(paymentsEndpoint('sale'), body, { headers: headers() });
@@ -99,10 +97,7 @@ router.post('/authorize', async (req, res) => {
   } catch (err) { return fail(res, err); }
 });
 
-/** ---------------------- CAPTURE a previous authorization ---------------------- */
-/**
- * Body: { transactionId, amount? }
- */
+/** ---------------------- CAPTURE an authorized amount ---------------------- */
 router.post('/capture', async (req, res) => {
   try {
     const { transactionId, amount } = req.body;
@@ -116,10 +111,7 @@ router.post('/capture', async (req, res) => {
   } catch (err) { return fail(res, err); }
 });
 
-/** ---------------------- VOID an auth/sale before settlement ---------------------- */
-/**
- * Body: { transactionId }
- */
+
 router.post('/void', async (req, res) => {
   try {
     const { transactionId } = req.body;
@@ -131,9 +123,7 @@ router.post('/void', async (req, res) => {
 });
 
 /** ---------------------- REFUND a settled sale ---------------------- */
-/**
- * Body: { transactionId, amount? }
- */
+
 router.post('/refund', async (req, res) => {
   try {
     const { transactionId, amount } = req.body;
