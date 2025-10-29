@@ -16,10 +16,10 @@ dotenv.config();
 
 const app = express();
 
-// 0) If behind a proxy/HTTPS terminator
+// If behind a proxy/HTTPS terminator
 app.set('trust proxy', 1);
 
-// 1) CORS (with proper IP origins)
+// CORS (with proper IP origins)
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'https://member.dreamtripclub.com',
@@ -33,7 +33,7 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')|| origin.endsWith('loyalty-frontend-main.vercel.app')) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -41,11 +41,11 @@ app.use(cors({
   credentials: true,
 }));
 
-// 2) Body parsers (ONCE)
+//  Body parsers (ONCE)
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// 3) Cookies (BEFORE any routes)
+//  Cookies (BEFORE any routes)
 app.use(cookieParser());
 
 // 4) No-store headers for auth-sensitive APIs (BEFORE routes)
