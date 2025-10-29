@@ -14,8 +14,9 @@ const COOKIE_NAME = process.env.COOKIE_NAME || 'dtc_session';
 function cookieOptions(req) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true,         
+    sameSite: 'None',       
+    domain: '.dreamtripclub.com',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
@@ -127,6 +128,13 @@ router.post('/login', async (req, res) => {
   });
 }
 
+});
+
+// log in status check
+router.get('/status', (req, res) => {
+  const hasSession = !!(req.cookies && req.cookies[COOKIE_NAME]);
+  if (!hasSession) return res.status(401).json({ ok: false });
+  return res.json({ ok: true });
 });
 
 

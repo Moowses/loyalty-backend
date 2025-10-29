@@ -86,7 +86,10 @@ router.post('/authorize', async (req, res) => {
       currency,
       order: { id: orderId || `AUTH-${Date.now()}`, description: process.env.NMI_MERCHANT_DESC || 'Authorization' },
       payment_token: paymentToken,
-      billing
+      billing,
+      merchant_defined_field_1: billing?.city || req.body.city || null,
+      merchant_defined_field_2: req.body.profileId || null,            
+      merchant_defined_field_3: "WebApp"  
     };
 
     const { data } = await axios.post(paymentsEndpoint('authorize'), body, { headers: headers() });
