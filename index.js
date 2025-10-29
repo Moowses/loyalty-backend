@@ -33,13 +33,13 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')|| origin.endsWith('loyalty-frontend-main.vercel.app')) {
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.dreamtripclub.com')) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-}));
+}));s
 
 //  Body parsers (ONCE)
 app.use(express.json({ limit: '1mb' }));
@@ -62,7 +62,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 5) Rate limiter(s)
+//  Rate limiter(s)
 const resetLimiter = rateLimit({
   windowMs: 3 * 60 * 1000,
   max: 1,
@@ -71,7 +71,7 @@ const resetLimiter = rateLimit({
   message: { success: false, message: 'Please wait 3 minutes before requesting another reset link.' },
 });
 
-// 6) Routes
+//  Routes
 app.use('/api/auth/signup', signupRoutes);
 app.use('/api/auth/reset-password', resetPassword);
 app.use('/api/auth/request-password-reset', resetLimiter, requestPasswordReset);
@@ -81,8 +81,8 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/auth', authRoutes);
 
-// 7) Listener
-const PORT = process.env.PORT || 5000;
+// Listener
+const PORT = process.env.PORT || 5000;s
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
