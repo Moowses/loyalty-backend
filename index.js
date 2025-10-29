@@ -25,6 +25,7 @@ const ALLOWED_ORIGINS = [
   'https://member.dreamtripclub.com',
   'https://www.dreamtripclub.com',
   'https://dreamtripclub.com',
+  'https://loyalty-frontend-main.vercel.app',
   'http://128.77.24.76',
   'https://128.77.24.76',
 ];
