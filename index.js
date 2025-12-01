@@ -12,7 +12,8 @@ const authRoutes = require('./routes/auth');
 const resetPassword = require('./routes/reset-password');
 const requestPasswordReset = require('./routes/request-password-reset');
 const accountUpdateRoutes = require('./routes/account-update');
-const kextExternalRef = require('./routes/kext-external-ref');
+const kextExternalRef = require('./routes/kext-external-ref'); // K series external reference routes
+const calendarRoutes = require('./routes/calendar');
 
 
 dotenv.config();
@@ -84,6 +85,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/account', accountUpdateRoutes);  
 app.use('/api/kext', kextExternalRef); // k series external reference endpoint
+app.use('/api/calendar', calendarRoutes); // calendar availability endpoint
 // Listener
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
