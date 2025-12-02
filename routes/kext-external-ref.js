@@ -11,12 +11,17 @@ router.post('/external-ref', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Missing externalReference' });
   }
 
-  // Extract membershipId if it follows DreamTripMember-<id>
   let membershipId = null;
-  const m = /^DreamTripMember-(.+)$/.exec(externalReference);
-  if (m) membershipId = m[1];
 
-  // Example: log or save to DB
+  // If prefixed, strip the prefix
+  const prefixed = /^DreamTripMember-(.+)$/.exec(externalReference);
+  if (prefixed) {
+    membershipId = prefixed[1];
+  } else {
+    // Otherwise just treat the externalReference itself as the membershipId
+    membershipId = String(externalReference).trim();
+  }
+
   const payload = {
     membershipId,
     externalReference,
@@ -27,11 +32,9 @@ router.post('/external-ref', async (req, res) => {
 
   console.log('[KEXT] Received external ref:', payload);
 
-  // TODO: insert into DB / send to loyalty service, etc.
-  // await db.LoyaltyLinks.insert(payload);
-
   return res.json({ ok: true });
 });
+
 
 
 module.exports = router;
