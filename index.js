@@ -14,8 +14,9 @@ const requestPasswordReset = require('./routes/request-password-reset');
 const accountUpdateRoutes = require('./routes/account-update');
 const kextExternalRef = require('./routes/kext-external-ref'); // K series external reference routes
 const calendarRoutes = require('./routes/calendar');
-//const uatToolsRoutes = require('./routes/uat-tools'); // testing token fetch from UAT
-//const metgettokenRoutes = require('./routes/metgettoken'); // testing token fetch from MET
+const uatToolsRoutes = require('./routes/uat-tools'); // testing token fetch from UAT
+const metgettokenRoutes = require('./routes/metgettoken'); // testing token fetch from MET
+const surveyRoutes = require('./routes/surveyRoutes'); // survey routes
 
 
 dotenv.config();
@@ -59,7 +60,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/auth') ||
     req.path.startsWith('/api/user') ||
     req.path.startsWith('/api/booking') ||
-    req.path.startsWith('/api/payments')
+    req.path.startsWith('/api/payments') ||
+    req.path.startsWith('/api/review')
   ) {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
@@ -76,6 +78,15 @@ const resetLimiter = rateLimit({
   message: { success: false, message: 'Please wait 3 minutes before requesting another reset link.' },
 });
 
+// Review limiter(s)
+const reviewLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'We see you have recently made a Review. Please waita wait a 1 hour before trying again.' },
+});
+
 // Routes
 app.use('/api/auth/signup', signupRoutes);
 app.use('/api/auth/reset-password', resetPassword);
@@ -88,8 +99,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/account', accountUpdateRoutes);  
 app.use('/api/kext', kextExternalRef); // k series external reference endpoint
 app.use('/api/calendar', calendarRoutes); // calendar availability endpoint
-//app.use('/api/uat-tools', uatToolsRoutes);// exposes GET /api/uat/get-token
-//app.use('/api/metgettoken',metgettokenRoutes);// exposes GET /api/uat/get-token
+app.use('/api/uat-tools', uatToolsRoutes);// exposes GET /api/uat/get-token
+app.use('/api/metgettoken',metgettokenRoutes);// exposes GET /api/uat/get-token
+app.use('/api/review', surveyRoutes); // survey endpoints
+
+
 // Listener
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -23,9 +23,7 @@ function cookieOptions(req) {
 }
 
 const crypto = require('crypto');
-
-/** LOGIN */
-/** LOGIN (flag-aware responses + cookie preserved) */
+// Login endpoint
 router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '').trim();
@@ -39,7 +37,7 @@ router.post('/login', async (req, res) => {
     });
   }
 
-  // Map upstream flags to HTTP status + user-friendly messages
+  // Map upstream flags
   const FLAG_MAP = {
     '0': { status: 200, message: 'Login successful.' },
     '1': { status: 422, message: 'Request validation failed. Please check your inputs.' },
@@ -82,8 +80,7 @@ router.post('/login', async (req, res) => {
       // Success: set your session cookie (same behavior as before)
       res.cookie(COOKIE_NAME, 'user-authenticated', cookieOptions(req));
 
-      // You can optionally persist a lightweight identifier for FE use:
-      // res.cookie('dtc_email', email, { ...cookieOptions(req), httpOnly: false });
+    
 
       return res.status(mapping.status).json({
         success: true,
@@ -138,7 +135,7 @@ router.get('/status', (req, res) => {
 });
 
 
-/** ME endpoint - SIMPLIFIED FOR NOW */
+/** ME endpoint - Coockies*/
 router.get('/me', (req, res) => {
   const hasSession = req.cookies && req.cookies[COOKIE_NAME];
   return res.json({ 

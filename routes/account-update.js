@@ -27,7 +27,7 @@ const FLAG_MAP = {
   '7': 'Multiple profiles for this email',
 };
 
-//helper: vendor login (query params)
+//helper login (query params)
 async function vendorLogin(email, pwdHex, svcToken) {
   const url = `${API_BASE}LoginthroughEmail?` + qs.stringify({
     email,
@@ -45,7 +45,7 @@ async function vendorLogin(email, pwdHex, svcToken) {
 }
 
 
-//Helper: vendor set new password (JSON)
+//Helperset new password (JSON)
 
 async function vendorSetPassword(email, encryptedPwd, svcToken) {
   const url = `${API_BASE}ResetPasswordProfile`;

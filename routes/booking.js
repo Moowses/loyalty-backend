@@ -10,16 +10,7 @@ const httpsAgent =  process.env.NODE_ENV === 'production'
    ? undefined
    : new https.Agent({ rejectUnauthorized: false });
 
-
-
-/**
- * GET /api/booking/availability
- * - If hotelId present → GetRateAndAvailability_Moblie (hotel-specific)
- * - Else if lat/lng present → getHotelRoomInfo (nearby list)
- *   Carries infants + pets through (pets as yes/no per your working version)
- */
 // helpers
-// helpers (keep these near the top of the file)
 const toNum = (v) => Number(String(v ?? 0).replace(/[^0-9.-]/g, '')) || 0;
 const asYesNo = (v, def = 'no') => {
   const s = String(v ?? '').toLowerCase();
@@ -51,7 +42,7 @@ const NO_ROOMS_PAYLOAD = () => ({
 router.get('/availability', async (req, res) => {
   const {
     hotelId: hotelIdRaw,
-    hotelNo: hotelNoRaw,               // <-- NEW: allow hotelNo
+    hotelNo: hotelNoRaw,               
     startDate, endDate, startTime, endTime,
     lng, lat,
     adult, adults,
@@ -64,7 +55,10 @@ router.get('/availability', async (req, res) => {
   const ci = startDate || startTime;
   const co = endDate   || endTime;
   if (!ci || !co) {
-    return res.status(400).json({ success: false, message: 'Missing required dates (startDate/startTime and endDate/endTime).' });
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required dates (startDate/startTime and endDate/endTime).'
+    });
   }
 
   const A   = Number(adults ?? adult ?? 1);
@@ -80,7 +74,12 @@ router.get('/availability', async (req, res) => {
 
   try {
     const token = await getToken();
-    if (!token) return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
+    if (!token) {
+      return res.status(500).json({
+        success: false,
+        message: 'Could not retrieve access token'
+      });
+    }
 
     // ---------- SINGLE HOTEL (final pricing) ----------
     if (hasSingle) {
@@ -99,14 +98,20 @@ router.get('/availability', async (req, res) => {
           pet: PET,
           currency: CCY,
         };
-        return axios.post(apiBaseUrl + 'GetRateAndAvailability_Moblie', null, { params, httpsAgent });
+        return axios.post(
+          apiBaseUrl + 'GetRateAndAvailability_Moblie',
+          null,
+          { params, httpsAgent }
+        );
       };
 
       // First attempt: use hotelNo (code) if present, else numeric.
       let up = await tryOnce(hotelNo || hotelIdNum);
 
       // If empty AND we only tried numeric AND we also have a code, try again with the code.
-      const arr1 = Array.isArray(up?.data?.data) ? up.data.data : (up?.data?.data ? [up.data.data] : []);
+      const arr1 = Array.isArray(up?.data?.data)
+        ? up.data.data
+        : (up?.data?.data ? [up.data.data] : []);
       if ((!arr1 || arr1.length === 0) && !hotelNo && hotelIdNum) {
         // nothing we can do here without a code
       } else if ((!arr1 || arr1.length === 0) && hotelNo && hotelIdNum && hotelNo !== hotelIdNum) {
@@ -114,7 +119,9 @@ router.get('/availability', async (req, res) => {
       }
 
       const data = up?.data;
-      const arr  = Array.isArray(data?.data) ? data.data : (data?.data ? [data.data] : []);
+      const arr  = Array.isArray(data?.data)
+        ? data.data
+        : (data?.data ? [data.data] : []);
       let out;
 
       // helper to build nightly map from details, if necessary
@@ -133,44 +140,58 @@ router.get('/availability', async (req, res) => {
       if (arr.length) {
         const first = arr[0];
 
-        // nightly sum
-        let dailyPrices = first?.dailyPrices && typeof first.dailyPrices === 'object'
-          ? Object.fromEntries(Object.entries(first.dailyPrices).map(([k, v]) => [k, toNum(v)]))
-          : buildDailyFromDetails(first?.details);
+        // NEW: respect Meta availability flags
+        const status   = String(first.Status || first.status || '').toLowerCase();
+        const availFlg = String(first.isAvailable || first.isavailable || '').trim();
 
-        let roomSubtotal = Object.values(dailyPrices).reduce((a,b)=>a+toNum(b), 0);
-        if (roomSubtotal <= 0) roomSubtotal = toNum(first?.totalPrice);
+        if (availFlg === '0' || status === 'reserved') {
+          // Not bookable → return "No available rooms"
+          out = { result: 'succ', flag: '0', data: 'No available rooms' };
+        } else {
+          // nightly sum (existing logic)
+          let dailyPrices = first?.dailyPrices && typeof first.dailyPrices === 'object'
+            ? Object.fromEntries(
+                Object.entries(first.dailyPrices).map(([k, v]) => [k, toNum(v)])
+              )
+            : buildDailyFromDetails(first?.details);
 
-        // fees & taxes (new fields)
-        const petFeeAmount       = toNum(first?.petFeeAmount);
-        const cleaningFeeAmount  = toNum(first?.cleaningFee ?? first?.CleaningFee);
-        const vatAmount          = toNum(first?.Vat ?? first?.VAT ?? first?.vat);
-        const grossAmountUpstream= toNum(first?.GrossAmount || first?.grossAmount);
+          let roomSubtotal = Object.values(dailyPrices).reduce(
+            (a, b) => a + toNum(b),
+            0
+          );
+          if (roomSubtotal <= 0) roomSubtotal = toNum(first?.totalPrice);
 
-        const grandTotal = roomSubtotal + petFeeAmount + cleaningFeeAmount + vatAmount;
+          // fees & taxes (existing logic)
+          const petFeeAmount       = toNum(first?.petFeeAmount);
+          const cleaningFeeAmount  = toNum(first?.cleaningFee ?? first?.CleaningFee);
+          const vatAmount          = toNum(first?.Vat ?? first?.VAT ?? first?.vat);
+          const grossAmountUpstream= toNum(first?.GrossAmount || first?.grossAmount);
 
-        out = {
-          result: 'succ',
-          flag: '0',
-          data: [{
-            hotelNo: first?.hotelNo ?? hotelNo ?? '',
-            RoomType: first?.RoomTypeName ?? first?.roomTypeName ?? '',
-            lng: first?.lng ?? '',
-            dailyPrices,
-            roomSubtotal,
-            petFeeAmount,
-            cleaningFeeAmount,
-            vatAmount,
-            grandTotal,
-            grossAmountUpstream,
-            hotelId: hotelIdNum || String(first?.roomTypeId || ''),
-            hotelName: first?.hotelName ?? '',
-            currencyCode: (first?.currencyCode || CCY).toUpperCase(),
-            lat: first?.lat ?? '',
-            roomTypeId: hotelIdNum || String(first?.roomTypeId || ''),
-            capacity: first?.Capacity ?? first?.capacity,
-          }],
-        };
+          const grandTotal = roomSubtotal + petFeeAmount + cleaningFeeAmount + vatAmount;
+
+          out = {
+            result: 'succ',
+            flag: '0',
+            data: [{
+              hotelNo: first?.hotelNo ?? hotelNo ?? '',
+              RoomType: first?.RoomTypeName ?? first?.roomTypeName ?? '',
+              lng: first?.lng ?? '',
+              dailyPrices,
+              roomSubtotal,
+              petFeeAmount,
+              cleaningFeeAmount,
+              vatAmount,
+              grandTotal,
+              grossAmountUpstream,
+              hotelId: hotelIdNum || String(first?.roomTypeId || ''),
+              hotelName: first?.hotelName ?? '',
+              currencyCode: (first?.currencyCode || CCY).toUpperCase(),
+              lat: first?.lat ?? '',
+              roomTypeId: hotelIdNum || String(first?.roomTypeId || ''),
+              capacity: first?.Capacity ?? first?.capacity,
+            }],
+          };
+        }
       } else {
         out = { result: 'succ', flag: '0', data: 'No available rooms' };
       }
@@ -178,17 +199,21 @@ router.get('/availability', async (req, res) => {
       return res.json({ success: true, data: out });
     }
 
-    // ---------- NEARBY LIST (search results) ----------
+    // NEARBY LIST (search results) 
     if (lng && lat) {
       const form = qs.stringify({
         startDate: ci, endDate: co, lng, lat,
         adult: A, child: C, infant: I, pet: PET,
         flag: 0, token,
       });
-      const response = await axios.post(apiBaseUrl + 'getHotelRoomInfo', form, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      });
+      const response = await axios.post(
+        apiBaseUrl + 'getHotelRoomInfo',
+        form,
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent
+        }
+      );
 
       // normalize new fee/tax fields if present
       const d = response.data;
@@ -198,7 +223,10 @@ router.get('/availability', async (req, res) => {
           item.cleaningFeeAmount = toNum(item?.cleaningFee ?? item?.CleaningFee);
           item.vatAmount         = toNum(item?.Vat ?? item?.VAT ?? item?.vat);
           if (item?.dailyPrices && typeof item.dailyPrices === 'object') {
-            const subtotal = Object.values(item.dailyPrices).reduce((a, b) => a + toNum(b), 0);
+            const subtotal = Object.values(item.dailyPrices).reduce(
+              (a, b) => a + toNum(b),
+              0
+            );
             item.totalPrice = String(subtotal);
           }
         }
@@ -207,25 +235,24 @@ router.get('/availability', async (req, res) => {
       return res.json({ success: true, data: d });
     }
 
-    return res.status(400).json({ success: false, message: 'Missing required parameters: either hotelId OR lat/lng.' });
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required parameters: either hotelId OR lat/lng.'
+    });
   } catch (err) {
     console.error('Availability API error:', err.response?.data || err.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch availability', error: err.response?.data || err.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch availability',
+      error: err.response?.data || err.message,
+    });
   }
 });
 
 
 
-/**
- * POST /api/booking/confirm
- * Atomic: charge with NMI token → create reservation in Metasphere (pets + infants)
- * Body:
- * {
- *   quote: { hotelId, roomTypeId, startTime, endTime, adults, children, infants, pets, currency, grossAmount, petFeeAmount? },
- *   guest: { firstName, lastName, email, phone, country, city, address, membershipNo? },
- *   payment: { token } // NMI Collect.js payment_token
- * }
- */
+//POST /api/booking/confirm payament + create reservation
+
 
 function friendlyNmiMessage(nmi = {}) {
   const text = String(nmi.resptext || nmi.responsetext || nmi.message || '').toLowerCase();
@@ -332,7 +359,7 @@ function friendlyNmiMessage(nmi = {}) {
       const friendly = friendlyNmiMessage(nmi);
       return res.status(402).json({
         success: false,
-        message: friendly,          // <-- friendlier message
+        message: friendly,        
         code: nmi.respcode || nmi.response_code || null,
         avs: nmi.avsresponse || null,
         cvv: nmi.cvvresponse || nmi.cvverror || null,
@@ -342,7 +369,7 @@ function friendlyNmiMessage(nmi = {}) {
 
     const transactionId = nmi.transactionid || nmi.transaction_id || null;
 
-    // ---- CREATE RESERVATION (Metasphere) ----
+    //  CREATE RESERVATION (Metasphere)
     try {
       const msToken = await getToken();
       if (!msToken) {
@@ -426,10 +453,7 @@ function friendlyNmiMessage(nmi = {}) {
 });
 
 
-/**
- * (kept) POST /api/booking/check-member
- * Your existing CRM member check.
- */
+//Check member in CRM
 router.post('/check-member', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ success: false, message: 'Email is required' });

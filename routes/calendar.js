@@ -5,8 +5,8 @@ const { getToken } = require('../services/getToken');
 
 const router = express.Router();
 
-// Base URL (e.g. https://servicehub.metasphere.global:8958/api/ or 8966/api/) 
-// return if swining to live process.env.API_BASE_URL
+// Base URL (e.g. https://servicehub.metasphere.global:8958/api/ or 8966/api/)
+// For live, you can later swap this to process.env.API_BASE_URL.
 const rawBaseUrl = 'https://servicehub.metasphere.global:8966/api/';
 const apiBaseUrl = rawBaseUrl.replace(/\/+$/, '');
 
@@ -19,6 +19,11 @@ const httpsAgent =
 // --- helpers ---
 const toNum = (v) =>
   Number(String(v ?? 0).replace(/[^0-9.-]/g, '')) || 0;
+
+const toInt = (v) => {
+  const n = parseInt(String(v ?? '').trim(), 10);
+  return Number.isNaN(n) ? null : n;
+};
 
 // split long ranges into <= 90-day windows
 function splitIntoWindows(startISO, endISO, maxDays = 90) {
@@ -59,8 +64,14 @@ function splitIntoWindows(startISO, endISO, maxDays = 90) {
  *      hotelId,
  *      currencyCode,
  *      dailyPrices: { 'YYYY-MM-DD': price },
- *      availability: { 'YYYY-MM-DD': 1 | 0 },
- *      days: [{ date, available, price }]
+ *      availability: { 'YYYY-MM-DD': 1 | 0 }, // 1 = clickable, 0 = not clickable
+ *      days: [{ date, available, price, minStay, maxStay }],
+ *      minStay: { 'YYYY-MM-DD': number },     // per-day minimum nights
+ *      maxStay: { 'YYYY-MM-DD': number },     // per-day maximum nights
+ *      defaults: {
+ *        minNights, // fallback from room.min_Nights (e.g. 7 nights)
+ *        maxNights, // fallback from room.max_Nights
+ *      }
  *    },
  *    range: { startDate, endDate }
  *  }
@@ -114,6 +125,11 @@ router.get('/availability', async (req, res) => {
     const byDate = {};
     let lastCurrency = CCY;
 
+    // overall default min/max nights from the room-level config
+    // (e.g. 7 nights fallback when marketing doesn’t configure per-day)
+    let defaultMinNights = null;
+    let defaultMaxNights = null;
+
     for (const win of windows) {
       const params = {
         hotelId: idForUpstream,
@@ -148,6 +164,21 @@ router.get('/availability', async (req, res) => {
       for (const room of rooms) {
         if (room?.Currency) lastCurrency = room.Currency;
 
+        // room-level default min/max nights (fallback when day doesn’t have its own rule)
+        const roomMinNights = toInt(room.min_Nights ?? room.minNights);
+        const roomMaxNights = toInt(room.max_Nights ?? room.maxNights);
+
+        if (roomMinNights != null) {
+          if (defaultMinNights == null || roomMinNights < defaultMinNights) {
+            defaultMinNights = roomMinNights;
+          }
+        }
+        if (roomMaxNights != null) {
+          if (defaultMaxNights == null || roomMaxNights > defaultMaxNights) {
+            defaultMaxNights = roomMaxNights;
+          }
+        }
+
         const details = Array.isArray(room.details) ? room.details : [];
 
         for (const d of details) {
@@ -161,11 +192,23 @@ router.get('/availability', async (req, res) => {
           const isAvail = isAvailFlag === '1'; // 1 = available, 0 = unavailable
           const price = toNum(d.price || d.Price);
 
+          // per-day min/max rules from Meta (Hostaway mapping)
+          const dayMinStay = toInt(d.minimum_Stay ?? d.minimumStay);
+          const dayMaxStay = toInt(d.maximum_Stay ?? d.maximumStay);
+
+          // effective min/max nights for this specific date from this rate
+          const effectiveMin =
+            dayMinStay ?? roomMinNights ?? defaultMinNights ?? null;
+          const effectiveMax =
+            dayMaxStay ?? roomMaxNights ?? defaultMaxNights ?? null;
+
           if (!byDate[dateStr]) {
             byDate[dateStr] = {
               date: dateStr,
               available: false,
               minPrice: null,
+              minStay: null,
+              maxStay: null,
             };
           }
 
@@ -183,13 +226,27 @@ router.get('/availability', async (req, res) => {
               entry.minPrice = price;
             }
           }
+
+          // aggregate min/max nights across rooms for this date
+          if (effectiveMin != null) {
+            if (entry.minStay == null || effectiveMin < entry.minStay) {
+              entry.minStay = effectiveMin;
+            }
+          }
+          if (effectiveMax != null) {
+            if (entry.maxStay == null || effectiveMax > entry.maxStay) {
+              entry.maxStay = effectiveMax;
+            }
+          }
         }
       }
     }
 
     const dailyPrices = {};
     const availability = {};
-    const days = [];
+    const days = {};
+    const minStayMap = {};
+    const maxStayMap = {};
 
     Object.keys(byDate)
       .sort((a, b) => a.localeCompare(b))
@@ -201,12 +258,21 @@ router.get('/availability', async (req, res) => {
         if (entry.minPrice != null) {
           dailyPrices[dateStr] = entry.minPrice;
         }
+        if (entry.minStay != null) {
+          minStayMap[dateStr] = entry.minStay;
+        }
+        if (entry.maxStay != null) {
+          maxStayMap[dateStr] = entry.maxStay;
+        }
 
-        days.push({
+        // array form mainly for debugging / UI convenience
+        days[dateStr] = {
           date: dateStr,
           available: !!entry.available,
           price: entry.minPrice,
-        });
+          minStay: entry.minStay,
+          maxStay: entry.maxStay,
+        };
       });
 
     return res.json({
@@ -217,6 +283,12 @@ router.get('/availability', async (req, res) => {
         dailyPrices,
         availability, // 1 = clickable, 0 = not clickable
         days,
+        minStay: minStayMap,
+        maxStay: maxStayMap,
+        defaults: {
+          minNights: defaultMinNights,
+          maxNights: defaultMaxNights,
+        },
       },
       range: { startDate, endDate },
     });
