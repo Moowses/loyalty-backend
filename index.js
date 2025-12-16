@@ -17,7 +17,7 @@ const calendarRoutes = require('./routes/calendar');
 const uatToolsRoutes = require('./routes/uat-tools'); // testing token fetch from UAT
 const metgettokenRoutes = require('./routes/metgettoken'); // testing token fetch from MET
 const surveyRoutes = require('./routes/surveyRoutes'); // survey routes
-
+const accountSettingsRoute = require("./routes/accountSetting");// account settings route
 
 dotenv.config();
 
@@ -102,6 +102,7 @@ app.use('/api/calendar', calendarRoutes); // calendar availability endpoint
 app.use('/api/uat-tools', uatToolsRoutes);// exposes GET /api/uat/get-token
 app.use('/api/metgettoken',metgettokenRoutes);// exposes GET /api/uat/get-token
 app.use('/api/review', surveyRoutes); // survey endpoints
+app.use("/api/user", accountSettingsRoute);  // account settings endpoint
 
 
 // Listener
