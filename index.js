@@ -18,6 +18,7 @@ const uatToolsRoutes = require('./routes/uat-tools'); // testing token fetch fro
 const metgettokenRoutes = require('./routes/metgettoken'); // testing token fetch from MET
 const surveyRoutes = require('./routes/surveyRoutes'); // survey routes
 const accountSettingsRoute = require("./routes/accountSetting");// account settings route
+const propertiesRouter = require("./routes/properties");// properties route
 
 dotenv.config();
 
@@ -103,6 +104,7 @@ app.use('/api/uat-tools', uatToolsRoutes);// exposes GET /api/uat/get-token
 app.use('/api/metgettoken',metgettokenRoutes);// exposes GET /api/uat/get-token
 app.use('/api/review', surveyRoutes); // survey endpoints
 app.use("/api/user", accountSettingsRoute);  // account settings endpoint
+app.use("/api/properties", propertiesRouter);
 
 
 // Listener
