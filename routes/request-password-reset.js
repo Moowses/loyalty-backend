@@ -21,13 +21,12 @@ if (process.env.SENDGRID_API_KEY) {
   console.warn('[request-password-reset] WARNING: SENDGRID_API_KEY is not set');
 }
 
-// ---- Helpers ----
+//  Helpers
 async function verifyMember(email) {
   const token = await getToken();
   if (!token) throw new Error('Upstream token unavailable');
 
-  // Per vendor spec: POST with query string params
-  // GetPrivateProfile?email=...&flag=0&token=...
+
   const url = `${apiBaseUrl}GetPrivateProfile?email=${encodeURIComponent(email)}&flag=0&token=${encodeURIComponent(token)}`;
   const resp = await axios.post(url, null, { httpsAgent });
   const data = resp?.data || {};

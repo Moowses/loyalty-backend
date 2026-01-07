@@ -77,9 +77,11 @@ router.post('/login', async (req, res) => {
     };
 
     if (upstreamFlag === '0') {
-      // Success: set your session cookie (same behavior as before)
+      // Success: set your session cookie 
       res.cookie(COOKIE_NAME, 'user-authenticated', cookieOptions(req));
+      const publicCookieOptions = {...cookieOptions(req),httpOnly: false,};
 
+      res.cookie('dtc_email', email, publicCookieOptions);
     
 
       return res.status(mapping.status).json({
@@ -90,7 +92,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Helpful per-flag hints (optional but nice UX)
+    // Helpful per-flag hints
     let hint;
     if (upstreamFlag === '3') hint = 'Check for typos or try signing up.';
     else if (upstreamFlag === '5') hint = 'Double-check your password or reset it if you forgot.';
@@ -137,18 +139,33 @@ router.get('/status', (req, res) => {
 
 /** ME endpoint - Coockies*/
 router.get('/me', (req, res) => {
-  const hasSession = req.cookies && req.cookies[COOKIE_NAME];
-  return res.json({ 
-    loggedIn: !!hasSession,
-    message: hasSession ? 'User authenticated' : 'Not authenticated'
+  const hasSession = !!(req.cookies && req.cookies[COOKIE_NAME]);
+
+  if (!hasSession) {
+    return res.status(401).json({
+      loggedIn: false,
+      message: 'Not authenticated',
+    });
+  }
+
+  return res.json({
+    loggedIn: true,
+    message: 'User authenticated',
+    member: {
+      email: req.cookies?.dtc_email || null,
+      membershipNo: req.cookies?.dtc_membershipNo || null,
+      firstName: req.cookies?.dtc_firstName || null,
+      lastName: req.cookies?.dtc_lastName || null,
+    },
   });
 });
+
 
 /** LOGOUT */
 router.post('/logout', (req, res) => {
   const baseCookie = {
     path: '/',
-    domain: '.dreamtripclub.com', // important so it clears across member.dreamtripclub.com and dreamtripclub.com
+    domain: '.dreamtripclub.com', // ensure corss will domain cookies are cleared
     secure: true,
     sameSite: 'None',
   };
@@ -156,13 +173,13 @@ router.post('/logout', (req, res) => {
   // clear the httpOnly session cookie
   res.clearCookie(COOKIE_NAME, baseCookie);
 
-  // clear the profile cookies (non-httpOnly, accessible to client JS)
+  // clear the profile cookies 
   res.clearCookie('dtc_firstName', baseCookie);
   res.clearCookie('dtc_lastName', baseCookie);
   res.clearCookie('dtc_email', baseCookie);
   res.clearCookie('dtc_membershipNo', baseCookie);
 
-  // tell browser to clear site data (extra belt & suspenders)
+  // tell browser to clear site data 
   res.setHeader('Clear-Site-Data', '"cookies", "storage", "cache"');
 
   return res.json({ success: true, loggedIn: false });
