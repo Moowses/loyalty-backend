@@ -12,7 +12,7 @@ const httpsAgent = String(process.env.ALLOW_INSECURE_SSL || 'false') === 'true'
   ? new https.Agent({ rejectUnauthorized: false })
   : undefined;
 
-const APP_ORIGIN = (process.env.PUBLIC_APP_ORIGIN || 'https://member.dreamtripclub.com').replace(/\/+$/, '');
+const APP_ORIGIN = (process.env.PUBLIC_APP_ORIGIN || 'https://dreamtripclub.com').replace(/\/+$/, '');
 const FROM = process.env.SENDGRID_FROM || 'Dream Trip Club <no-reply@dreamtripclub.com>';
 
 if (process.env.SENDGRID_API_KEY) {
