@@ -19,6 +19,7 @@ const metgettokenRoutes = require('./routes/metgettoken'); // testing token fetc
 const surveyRoutes = require('./routes/surveyRoutes'); // survey routes
 const accountSettingsRoute = require("./routes/accountSetting");// account settings route
 const propertiesRouter = require("./routes/properties");// properties route
+const calabogieRoutes = require('./routes/calabogie');
 
 dotenv.config();
 
@@ -105,6 +106,7 @@ app.use('/api/metgettoken',metgettokenRoutes);// exposes GET /api/uat/get-token
 app.use('/api/review', surveyRoutes); // survey endpoints
 app.use("/api/user", accountSettingsRoute);  // account settings endpoint
 app.use("/api/properties", propertiesRouter);
+app.use('/api/calabogie', calabogieRoutes);
 
 
 // Listener

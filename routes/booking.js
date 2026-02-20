@@ -19,6 +19,25 @@ const asYesNo = (v, def = 'no') => {
   return def;
 };
 
+const parseInventoryCount = (value) => {
+  const n = Number(String(value ?? '').trim());
+  if (Number.isFinite(n)) return n > 0 ? Math.floor(n) : 0;
+  return 0;
+};
+
+const isRowAvailable = (row) => {
+  const status = String(row?.Status || row?.status || '').trim().toLowerCase();
+  const isAvailRaw = row?.isAvailable ?? row?.isavailable ?? row?.Available ?? row?.available;
+  const inventory = parseInventoryCount(isAvailRaw);
+
+  if (status === 'not available' || status === 'reserved' || status === 'blocked') {
+    return false;
+  }
+  if (status === 'available') return true;
+
+  return inventory > 0;
+};
+
 // --- NO-ROOMS detectors ---
 const isNoRoomsStub = (it) => {
   const rt = String(it?.RoomType ?? '').toLowerCase();
@@ -42,7 +61,8 @@ const NO_ROOMS_PAYLOAD = () => ({
 router.get('/availability', async (req, res) => {
   const {
     hotelId: hotelIdRaw,
-    hotelNo: hotelNoRaw,               
+    hotelNo: hotelNoRaw,
+    roomTypeId: roomTypeIdRaw,
     startDate, endDate, startTime, endTime,
     lng, lat,
     adult, adults,
@@ -70,6 +90,7 @@ router.get('/availability', async (req, res) => {
   // Normalized identifiers
   const hotelIdNum = (hotelIdRaw ?? '').toString().trim();  // e.g. "276301"
   const hotelNo    = (hotelNoRaw ?? '').toString().trim();  // e.g. "YDG"
+  const requestedRoomTypeId = (roomTypeIdRaw ?? '').toString().trim();
   const hasSingle  = !!hotelIdNum || !!hotelNo;
 
   try {
@@ -138,14 +159,22 @@ router.get('/availability', async (req, res) => {
       };
 
       if (arr.length) {
-        const first = arr[0];
+        const requestedMatch = requestedRoomTypeId
+          ? arr.find((r) => String(r?.RoomTypeId || r?.roomTypeId || '').trim() === requestedRoomTypeId)
+          : null;
+        const forceRequestedQuote = !!requestedRoomTypeId && !!requestedMatch;
 
-        // NEW: respect Meta availability flags
-        const status   = String(first.Status || first.status || '').toLowerCase();
-        const availFlg = String(first.isAvailable || first.isavailable || '').trim();
+        let first = requestedMatch || null;
+        if (!first) {
+          const availableRows = arr.filter(isRowAvailable);
+          const candidates = availableRows.length ? availableRows : arr;
+          first = [...candidates].sort(
+            (a, b) => toNum(a?.GrossAmount || a?.totalPrice) - toNum(b?.GrossAmount || b?.totalPrice)
+          )[0];
+        }
 
-        if (availFlg === '0' || status === 'reserved') {
-          // Not bookable → return "No available rooms"
+        if (!isRowAvailable(first) && !forceRequestedQuote) {
+          // Not bookable -> return "No available rooms"
           out = { result: 'succ', flag: '0', data: 'No available rooms' };
         } else {
           // nightly sum (existing logic)
@@ -183,11 +212,18 @@ router.get('/availability', async (req, res) => {
               vatAmount,
               grandTotal,
               grossAmountUpstream,
-              hotelId: hotelIdNum || String(first?.roomTypeId || ''),
+              hotelId: hotelNo || hotelIdNum || '',
               hotelName: first?.hotelName ?? '',
               currencyCode: (first?.currencyCode || CCY).toUpperCase(),
               lat: first?.lat ?? '',
-              roomTypeId: hotelIdNum || String(first?.roomTypeId || ''),
+              roomTypeId: String(first?.RoomTypeId || first?.roomTypeId || ''),
+              requestedRoomTypeId: requestedRoomTypeId || null,
+              roomTypeFallback:
+                !!requestedRoomTypeId &&
+                String(first?.RoomTypeId || first?.roomTypeId || '') !== requestedRoomTypeId,
+              status: String(first?.Status || first?.status || ''),
+              isAvailable: String(first?.isAvailable || first?.isavailable || ''),
+              bookable: isRowAvailable(first),
               capacity: first?.Capacity ?? first?.capacity,
             }],
           };
@@ -508,3 +544,5 @@ router.post('/create-reservation', async (req, res) => {
 });
 
 module.exports = router;
+
+
