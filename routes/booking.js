@@ -3,7 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 const apiBaseUrl = process.env.API_BASE_URL;
 const httpsAgent =  process.env.NODE_ENV === 'production'
@@ -94,50 +94,44 @@ router.get('/availability', async (req, res) => {
   const hasSingle  = !!hotelIdNum || !!hotelNo;
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({
-        success: false,
-        message: 'Could not retrieve access token'
-      });
-    }
-
     // ---------- SINGLE HOTEL (final pricing) ----------
     if (hasSingle) {
       // 1) Prefer the code if we have it (works reliably with upstream)
-      const tryOnce = async (idForUpstream) => {
-        const params = {
-          token,
-          hotelId: idForUpstream,      // upstream param name is hotelId, but it wants the CODE
-          startDate: ci,
-          endDate: co,
-          startTime: ci,
-          endTime: co,
-          adults: A,
-          children: C,
-          infaut: I,                   // keep their odd spelling
-          pet: PET,
-          currency: CCY,
+      const up = await withProdTokenRetry(async (token) => {
+        const tryOnce = async (idForUpstream) => {
+          const params = {
+            token,
+            hotelId: idForUpstream,      // upstream param name is hotelId, but it wants the CODE
+            startDate: ci,
+            endDate: co,
+            startTime: ci,
+            endTime: co,
+            adults: A,
+            children: C,
+            infaut: I,                   // keep their odd spelling
+            pet: PET,
+            currency: CCY,
+          };
+          return axios.post(
+            apiBaseUrl + 'GetRateAndAvailability_Moblie',
+            null,
+            { params, httpsAgent }
+          );
         };
-        return axios.post(
-          apiBaseUrl + 'GetRateAndAvailability_Moblie',
-          null,
-          { params, httpsAgent }
-        );
-      };
 
-      // First attempt: use hotelNo (code) if present, else numeric.
-      let up = await tryOnce(hotelNo || hotelIdNum);
+        let up = await tryOnce(hotelNo || hotelIdNum);
 
-      // If empty AND we only tried numeric AND we also have a code, try again with the code.
-      const arr1 = Array.isArray(up?.data?.data)
-        ? up.data.data
-        : (up?.data?.data ? [up.data.data] : []);
-      if ((!arr1 || arr1.length === 0) && !hotelNo && hotelIdNum) {
-        // nothing we can do here without a code
-      } else if ((!arr1 || arr1.length === 0) && hotelNo && hotelIdNum && hotelNo !== hotelIdNum) {
-        up = await tryOnce(hotelNo);
-      }
+        const arr1 = Array.isArray(up?.data?.data)
+          ? up.data.data
+          : (up?.data?.data ? [up.data.data] : []);
+        if ((!arr1 || arr1.length === 0) && !hotelNo && hotelIdNum) {
+          // nothing we can do here without a code
+        } else if ((!arr1 || arr1.length === 0) && hotelNo && hotelIdNum && hotelNo !== hotelIdNum) {
+          up = await tryOnce(hotelNo);
+        }
+
+        return up;
+      });
 
       const data = up?.data;
       const arr  = Array.isArray(data?.data)
@@ -237,19 +231,21 @@ router.get('/availability', async (req, res) => {
 
     // NEARBY LIST (search results) 
     if (lng && lat) {
-      const form = qs.stringify({
-        startDate: ci, endDate: co, lng, lat,
-        adult: A, child: C, infant: I, pet: PET,
-        flag: 0, token,
+      const response = await withProdTokenRetry(async (token) => {
+        const form = qs.stringify({
+          startDate: ci, endDate: co, lng, lat,
+          adult: A, child: C, infant: I, pet: PET,
+          flag: 0, token,
+        });
+        return axios.post(
+          apiBaseUrl + 'getHotelRoomInfo',
+          form,
+          {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            httpsAgent
+          }
+        );
       });
-      const response = await axios.post(
-        apiBaseUrl + 'getHotelRoomInfo',
-        form,
-        {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          httpsAgent
-        }
-      );
 
       // normalize new fee/tax fields if present
       const d = response.data;
@@ -407,46 +403,38 @@ function friendlyNmiMessage(nmi = {}) {
 
     //  CREATE RESERVATION (Metasphere)
     try {
-      const msToken = await getToken();
-      if (!msToken) {
-        return res.status(200).json({
-          success: true,
-          payment: { transactionId, nmi },
-          warning: 'Payment captured, but could not retrieve Metasphere token.'
-        });
-      }
+      const msResp = await withProdTokenRetry(async (msToken) => {
+        const createPayload = {
+          hotelId: String(quote.hotelId || ''),
+          roomTypeId: String(quote.roomTypeId || ''),
+          startTime: String(quote.startTime || ''),
+          endTime: String(quote.endTime || ''),
+          guestCount: String((+quote.adults || 0) + (+quote.children || 0)),
+          FirstName: String(guest.firstName || ''),
+          LastName: String(guest.lastName || ''),
+          Email: String(guest.email || ''),
+          phone: String(guest.phone || ''),
+          guestCountry: String(guest.country || ''),
+          guestCity: String(guest.city || ''),
+          guestAddress: String(guest.address || ''),
+          description: 'Web booking',
+          adults: String(quote.adults || 0),
+          children: String(quote.children || 0),
+          infants: String(quote.infants || 0),
+          pets: String(quote.pets || 0),
+          totalPrice: String(baseAmount.toFixed(2)),
+          currency: currency,
+          membershipNo: String(guest.membershipNo || ''),
+          token: msToken
+        };
 
-      const createPayload = {
-        hotelId: String(quote.hotelId || ''),
-        roomTypeId: String(quote.roomTypeId || ''),
-        startTime: String(quote.startTime || ''),
-        endTime: String(quote.endTime || ''),
-        guestCount: String((+quote.adults || 0) + (+quote.children || 0)),
-        FirstName: String(guest.firstName || ''),
-        LastName: String(guest.lastName || ''),
-        Email: String(guest.email || ''),
-        phone: String(guest.phone || ''),
-        guestCountry: String(guest.country || ''),
-        guestCity: String(guest.city || ''),
-        guestAddress: String(guest.address || ''),
-        description: 'Web booking',
-        adults: String(quote.adults || 0),
-        children: String(quote.children || 0),
-        infants: String(quote.infants || 0), // per Aug 12 spec
-        pets: String(quote.pets || 0),       // per Aug 12 spec
-        totalPrice: String(baseAmount.toFixed(2)), // room + pet fee
-        currency: currency,
-        membershipNo: String(guest.membershipNo || ''),
-        token: msToken
-      };
-
-      // x-www-form-urlencoded
-      const msForm = qs.stringify(createPayload); // <-- renamed to avoid collision
-      const msResp = await axios.post(
-        apiBaseUrl + 'CreateReservation_Mobile',
-        msForm,
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
-      );
+        const msForm = qs.stringify(createPayload);
+        return axios.post(
+          apiBaseUrl + 'CreateReservation_Mobile',
+          msForm,
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
+        );
+      });
 
       const reservationNumber =
         msResp?.data?.data?.ReservationNumber ||
@@ -495,13 +483,12 @@ router.post('/check-member', async (req, res) => {
   if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
 
   try {
-    const token = await getToken();
-    if (!token) return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-
-    const response = await axios.post(
-      apiBaseUrl + 'GetPrivateProfile',
-      qs.stringify({ email, flag: 0, token }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
+    const response = await withProdTokenRetry((token) =>
+      axios.post(
+        apiBaseUrl + 'GetPrivateProfile',
+        qs.stringify({ email, flag: 0, token }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
+      )
     );
 
     if (response.data?.flag === '0') {
@@ -526,15 +513,14 @@ router.post('/create-reservation', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-
-    const payload = { ...bookingData, token };
-    const response = await axios.post(
-      apiBaseUrl + 'CreateReservation_Mobile',
-      qs.stringify(payload),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
-    );
+    const response = await withProdTokenRetry((token) => {
+      const payload = { ...bookingData, token };
+      return axios.post(
+        apiBaseUrl + 'CreateReservation_Mobile',
+        qs.stringify(payload),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
+      );
+    });
 
     return res.json({ success: true, data: response.data });
   } catch (err) {

@@ -4,7 +4,7 @@ const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
 const crypto = require('crypto');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 const router = express.Router();
 
@@ -72,11 +72,8 @@ router.post('/check-password', async (req, res) => {
   }
 
   try {
-    const svcToken = await getToken();
-    if (!svcToken) return res.status(500).json({ ok: false, message: 'Could not retrieve access token.' });
-
     const currentHex = sha256Hex(currentPassword); // same encryption as login
-    const login = await vendorLogin(email, currentHex, svcToken);
+    const login = await withProdTokenRetry((svcToken) => vendorLogin(email, currentHex, svcToken));
 
     if (login.ok) {
       return res.json({ ok: true, message: 'Current password is valid.' });
@@ -109,12 +106,9 @@ router.post('/change-password', async (req, res) => {
   }
 
   try {
-    const svcToken = await getToken();
-    if (!svcToken) return res.status(500).json({ ok: false, message: 'Could not retrieve access token.' });
-
     // 1) Verify current password (same as login)
     const currentHex = sha256Hex(currentPassword);
-    const verify = await vendorLogin(email, currentHex, svcToken);
+    const verify = await withProdTokenRetry((svcToken) => vendorLogin(email, currentHex, svcToken));
     if (!verify.ok) {
       const msg = FLAG_MAP[verify.flag] || 'Current password invalid.';
       const code = verify.flag === '5' ? 401 : verify.flag === '3' ? 404 : 400;
@@ -123,7 +117,7 @@ router.post('/change-password', async (req, res) => {
 
     // Set new password (SHA-256 first)
     const newEncrypted = sha256Hex(newPassword);
-    let result = await vendorSetPassword(email, newEncrypted, svcToken);
+    let result = await withProdTokenRetry((svcToken) => vendorSetPassword(email, newEncrypted, svcToken));
 
     if (!result.ok) {
       return res.status(400).json({

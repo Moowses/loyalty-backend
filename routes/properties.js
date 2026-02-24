@@ -1,17 +1,17 @@
 const express = require("express");
 const axios = require("axios");
 const https = require("https");
-const { getToken } = require("../services/getToken");
+const { withProdTokenRetry } = require("../services/getToken");
 
 const router = express.Router();
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 router.get("/list", async (req, res) => {
   try {
-    const token = await getToken();
-
-    const url = `https://crm.metasphere.global:8966/api/GetPropertyList_Moblie?token=${token}`;
-    const { data } = await axios.post(url, {}, { httpsAgent });
+    const { data } = await withProdTokenRetry(async (token) => {
+      const url = `https://crm.metasphere.global:8966/api/GetPropertyList_Moblie?token=${token}`;
+      return axios.post(url, {}, { httpsAgent });
+    });
 
     const raw = Array.isArray(data?.data) ? data.data : [];
 

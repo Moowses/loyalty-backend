@@ -5,7 +5,7 @@ const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
 const crypto = require('crypto');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 const apiBaseUrl =
   (process.env.API_BASE_URL || process.env.CRM_BASE_URL || '').replace(/\/+$/, '') + '/';
@@ -73,10 +73,11 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) return res.status(502).json({ success: false, message: 'Upstream token unavailable' });
+    const token = await withProdTokenRetry(async (svcToken) => ({ data: { flag: '0', token: svcToken }, token: svcToken }));
+    const resolvedToken = token?.token || token?.data?.token;
+    if (!resolvedToken) return res.status(502).json({ success: false, message: 'Upstream token unavailable' });
 
-    const encryptedPwd = encryptPassword({ plaintext: password, mode: encMode, keySource, token });
+    const encryptedPwd = encryptPassword({ plaintext: password, mode: encMode, keySource, token: resolvedToken });
 
     console.log(' Testing signup encryption:', { encMode, keySource, outLen: encryptedPwd.length });
 
@@ -100,7 +101,7 @@ router.post('/', async (req, res) => {
       Promotioncode: '',
       flag: '0',
       socialMediaType: '1',
-      token
+      token: resolvedToken
     };
 
     const form = qs.stringify(payload);

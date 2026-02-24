@@ -4,7 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 const https = require('https');
 const crypto = require('crypto');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 // Keep base URL + agent consistent with the rest of your routes
 const apiBaseUrl = (process.env.API_BASE_URL || process.env.CRM_BASE_URL || '').replace(/\/+$/, '') + '/';
@@ -19,9 +19,11 @@ const FLAG_TO_MESSAGE = {
 };
 
 // helper: call vendor once with a given hex hash
-async function callReset({ email, hex, token }) {
-  const url = `${apiBaseUrl}ResetPasswordProfile?email=${encodeURIComponent(email)}&newPassword=${encodeURIComponent(hex)}&token=${encodeURIComponent(token)}`;
-  const resp = await axios.post(url, null, { httpsAgent });
+async function callReset({ email, hex }) {
+  const resp = await withProdTokenRetry(async (token) => {
+    const url = `${apiBaseUrl}ResetPasswordProfile?email=${encodeURIComponent(email)}&newPassword=${encodeURIComponent(hex)}&token=${encodeURIComponent(token)}`;
+    return axios.post(url, null, { httpsAgent });
+  });
   const data = resp?.data || {};
   const flag = String(data?.flag ?? '');
   const msg  = String(data?.msg || '');
@@ -41,17 +43,14 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) return res.status(502).json({ success: false, message: 'Upstream token unavailable' });
-
     // 1) Prefer SHA-256 to match login/signup
     const sha256 = crypto.createHash('sha256').update(pw, 'utf8').digest('hex');
-    let attempt = await callReset({ email: em, hex: sha256, token });
+    let attempt = await callReset({ email: em, hex: sha256 });
 
     // 2) If not accepted upstream, fall back to MD5 (per vendor PDF example)
     if (!attempt.ok) {
       const md5 = crypto.createHash('md5').update(pw, 'utf8').digest('hex');
-      attempt = await callReset({ email: em, hex: md5, token });
+      attempt = await callReset({ email: em, hex: md5 });
       if (attempt.ok) {
         return res.json({
           success: true,

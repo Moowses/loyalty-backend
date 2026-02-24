@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getToken, api } = require('../services/getToken');
+const { withProdTokenRetry, api } = require('../services/getToken');
 const axios = require('axios');
 const https = require('https');
 const qs = require('qs');
@@ -126,18 +126,15 @@ router.post('/profile', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
-    const response = await axios.post(
-      apiBaseUrl + 'GetPrivateProfile',
-      qs.stringify({ email, token }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      }
+    const response = await withProdTokenRetry((token) =>
+      axios.post(
+        apiBaseUrl + 'GetPrivateProfile',
+        qs.stringify({ email, token }),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent
+        }
+      )
     );
 
     const data = response.data;
@@ -167,41 +164,38 @@ router.post('/points/history', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Token fetch failed' });
-    }
+    const { totalPoints, transactionRes } = await withProdTokenRetry(async (token) => {
+      const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-    // local httpsAgent is redundant but kept to avoid changing behavior
-    const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+      const balanceRes = await axios.post(
+        'https://servicehub.metasphere.global:8966/api/getProfileStatisticsInfo',
+        new URLSearchParams({ Meta_pfprofileId: profileId, flag: 0, token }),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent
+        }
+      );
 
-    // 1. Get Total Points Balance
-    const balanceRes = await axios.post(
-      'https://servicehub.metasphere.global:8966/api/getProfileStatisticsInfo',
-      new URLSearchParams({ Meta_pfprofileId: profileId, flag: 0, token }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      }
-    );
+      const transactionRes = await axios.post(
+        'https://servicehub.metasphere.global:8966/api/getPointsTransaction',
+        new URLSearchParams({
+          Meta_profileId: profileId,
+          flag: 0,
+          token,
+          start: 0,
+          length: 100
+        }),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent
+        }
+      );
 
-    const totalPoints = balanceRes.data?.result?.TotalPoint || '0';
-
-    // 2. Get Points Transaction History
-    const transactionRes = await axios.post(
-      'https://servicehub.metasphere.global:8966/api/getPointsTransaction',
-      new URLSearchParams({
-        Meta_profileId: profileId,
-        flag: 0,
-        token,
-        start: 0,
-        length: 100
-      }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      }
-    );
+      return {
+        totalPoints: balanceRes.data?.result?.TotalPoint || '0',
+        transactionRes
+      };
+    });
 
     const transactions = transactionRes.data?.data || [];
 
@@ -245,74 +239,79 @@ router.post('/dashboard', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Failed to retrieve access token' });
-    }
-
-    // Get user profile
-    const profileRes = await api.post(
-      'GetPrivateProfile',
-      qs.stringify({ email, token, _: Date.now() })
-    );
+    const { profileRes, statsRes, transactionsRes } = await withProdTokenRetry(async (token) => {
+      const profileRes = await api.post(
+        'GetPrivateProfile',
+        qs.stringify({ email, token, _: Date.now() })
+      );
 
     console.log('Profile API response:', JSON.stringify(profileRes.data, null, 2));
 
-    const profileData = profileRes.data;
-    let profile;
+      const profileData = profileRes.data;
+      let profile;
 
-    if (profileData.data && Array.isArray(profileData.data) && profileData.data.length > 0) {
-      profile = profileData.data[0];
-    } else if (profileData.result) {
-      profile = profileData.result;
-    } else {
-      profile = profileData;
-    }
+      if (profileData.data && Array.isArray(profileData.data) && profileData.data.length > 0) {
+        profile = profileData.data[0];
+      } else if (profileData.result) {
+        profile = profileData.result;
+      } else {
+        profile = profileData;
+      }
 
     // Verify the returned email matches the requested email
-    if (profile.primaryemail && profile.primaryemail !== email) {
-      console.error('EMAIL MISMATCH ERROR:');
-      console.error('Requested email:', email);
-      console.error('Returned email:', profile.primaryemail);
-      return res.status(500).json({
-        success: false,
-        message: 'Server returned wrong user data. Please try again.'
-      });
-    }
+      if (profile.primaryemail && profile.primaryemail !== email) {
+        const e = new Error('EMAIL_MISMATCH');
+        e.status = 500;
+        e.publicMessage = 'Server returned wrong user data. Please try again.';
+        throw e;
+      }
 
-    if (!profile || !profile.meta_pfprofile_id) {
-      return res.status(404).json({ success: false, message: 'Profile or profile ID not found' });
-    }
+      if (!profile || !profile.meta_pfprofile_id) {
+        const e = new Error('PROFILE_NOT_FOUND');
+        e.status = 404;
+        e.publicMessage = 'Profile or profile ID not found';
+        throw e;
+      }
 
-    const profileId = profile.meta_pfprofile_id;
+      const profileId = profile.meta_pfprofile_id;
 
     // Step 2: Get total points balance
-    const statsRes = await api.post(
-      'getProfileStatisticsInfo',
-      qs.stringify({
-        Meta_pfprofileId: profileId,
-        flag: '0',
-        token
-      })
-    );
+      const statsRes = await api.post(
+        'getProfileStatisticsInfo',
+        qs.stringify({
+          Meta_pfprofileId: profileId,
+          flag: '0',
+          token
+        })
+      );
 
+      const totalPoints =
+        statsRes.data?.result?.totalPointsBalance ||
+        statsRes.data?.result?.TotalPoint ||
+        0;
+
+    // Step 3: Fetch points transaction history
+      const transactionsRes = await api.post(
+        'getPointsTransaction',
+        qs.stringify({
+          Meta_profileId: profileId,
+          flag: '0',
+          token,
+          start: 0,
+          length: 100
+        })
+      );
+
+      return { profileRes, profile, profileId, totalPoints, statsRes, transactionsRes };
+    });
+
+    const profileData = profileRes.data;
+    const profile = profileRes.data?.data?.[0] || profileRes.data?.result || profileRes.data;
+    const profileId = profile?.meta_pfprofile_id;
     const totalPoints =
       statsRes.data?.result?.totalPointsBalance ||
       statsRes.data?.result?.TotalPoint ||
       0;
-
-    // Step 3: Fetch points transaction history
-    const transactionsRes = await api.post(
-      'getPointsTransaction',
-      qs.stringify({
-        Meta_profileId: profileId,
-        flag: '0',
-        token,
-        start: 0,
-        length: 100
-      })
-    );
-
     const history = transactionsRes.data?.data || [];
 
     // Final output - INCLUDE EMAIL
@@ -331,6 +330,9 @@ router.post('/dashboard', async (req, res) => {
       }
     });
   } catch (err) {
+    if (err.publicMessage) {
+      return res.status(err.status || 500).json({ success: false, message: err.publicMessage });
+    }
     console.error('Dashboard error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
@@ -401,76 +403,67 @@ router.post('/stays', async (req, res) => {
       });
     }
 
-    // 1. Get token
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve access token'
-      });
-    }
-
-    // 2. Resolve membership number
     let membershipno = membershipNo;
 
-    if (!membershipno && email) {
-      const profileRes = await api.post(
-        'GetPrivateProfile',
-        qs.stringify({ email, token, flag: 0 })
+    const stayRes = await withProdTokenRetry(async (token) => {
+      if (!membershipno && email) {
+        const profileRes = await api.post(
+          'GetPrivateProfile',
+          qs.stringify({ email, token, flag: 0 })
+        );
+
+        const profileData = profileRes.data;
+        let profile = null;
+
+        if (profileData?.data && Array.isArray(profileData.data) && profileData.data.length > 0) {
+          profile = profileData.data[0];
+        } else if (profileData?.result && typeof profileData.result === 'object') {
+          profile = profileData.result;
+        } else if (typeof profileData === 'object') {
+          profile = profileData;
+        }
+
+        if (!profile || !profile.membershipno) {
+          const e = new Error('MEMBERSHIP_NOT_FOUND');
+          e.status = 404;
+          e.publicMessage = 'Membership number not found for this user';
+          throw e;
+        }
+
+        if (profile.primaryemail && email && profile.primaryemail !== email) {
+          console.error('GetPrivateStayBookings: email mismatch', {
+            requested: email,
+            returned: profile.primaryemail
+          });
+          const e = new Error('PROFILE_EMAIL_MISMATCH');
+          e.status = 500;
+          e.publicMessage = 'Profile email mismatch from CRM';
+          throw e;
+        }
+
+        membershipno = profile.membershipno;
+      }
+
+      if (!membershipno) {
+        const e = new Error('MEMBERSHIP_RESOLVE_FAILED');
+        e.status = 400;
+        e.publicMessage = 'Unable to resolve membership number';
+        throw e;
+      }
+
+      return axios.post(
+        apiBaseUrl + 'GetPrivateStayBookings',
+        qs.stringify({
+          membershipno,
+          flag: 0,
+          token
+        }),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent
+        }
       );
-
-      const profileData = profileRes.data;
-      let profile = null;
-
-      if (profileData?.data && Array.isArray(profileData.data) && profileData.data.length > 0) {
-        profile = profileData.data[0];
-      } else if (profileData?.result && typeof profileData.result === 'object') {
-        profile = profileData.result;
-      } else if (typeof profileData === 'object') {
-        profile = profileData;
-      }
-
-      if (!profile || !profile.membershipno) {
-        return res.status(404).json({
-          success: false,
-          message: 'Membership number not found for this user'
-        });
-      }
-
-      if (profile.primaryemail && email && profile.primaryemail !== email) {
-        console.error('GetPrivateStayBookings: email mismatch', {
-          requested: email,
-          returned: profile.primaryemail
-        });
-        return res.status(500).json({
-          success: false,
-          message: 'Profile email mismatch from CRM'
-        });
-      }
-
-      membershipno = profile.membershipno;
-    }
-
-    if (!membershipno) {
-      return res.status(400).json({
-        success: false,
-        message: 'Unable to resolve membership number'
-      });
-    }
-
-    // 3. Call GetPrivateStayBookings (3.7)
-    const stayRes = await axios.post(
-      apiBaseUrl + 'GetPrivateStayBookings',
-      qs.stringify({
-        membershipno,
-        flag: 0,
-        token
-      }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        httpsAgent
-      }
-    );
+    });
 
     const data = stayRes.data || {};
 
@@ -492,6 +485,9 @@ router.post('/stays', async (req, res) => {
       ...normalized
     });
   } catch (err) {
+    if (err.publicMessage) {
+      return res.status(err.status || 500).json({ success: false, message: err.publicMessage });
+    }
     console.error('Error in /stays:', err.message, err.response?.data || '');
     return res.status(500).json({
       success: false,

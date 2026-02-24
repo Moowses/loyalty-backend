@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const https = require('https');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 const router = express.Router();
 
@@ -263,14 +263,6 @@ router.get('/availability', async (req, res) => {
 
     const CCY = String(currency || 'CAD').toUpperCase();
 
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({
-        success: false,
-        message: 'Could not retrieve access token',
-      });
-    }
-
     const windows = splitIntoWindows(startDate, endDate, 90);
 
     // date -> aggregated info across all room types
@@ -284,36 +276,37 @@ router.get('/availability', async (req, res) => {
     let defaultMinNights = null;
     let defaultMaxNights = null;
 
-    for (const win of windows) {
-      const params = {
-        hotelId: idForUpstream,
-        startTime: win.start,
-        endTime: win.end,
-        token,
-      };
+    await withProdTokenRetry(async (token) => {
+      for (const win of windows) {
+        const params = {
+          hotelId: idForUpstream,
+          startTime: win.start,
+          endTime: win.end,
+          token,
+        };
 
-      const resp = await axios.post(
-        `${apiBaseUrl}/GetRateAndStatus_Moblie`,
-        null,
-        {
-          params,
-          httpsAgent,
-          timeout: 30000,
+        const resp = await axios.post(
+          `${apiBaseUrl}/GetRateAndStatus_Moblie`,
+          null,
+          {
+            params,
+            httpsAgent,
+            timeout: 30000,
+          }
+        );
+
+        const data = resp?.data;
+
+        if (!data || data.flag !== '0' || data.result !== 'success') {
+          console.warn('Meta calendar window error:', win, data || resp?.data);
+          continue;
         }
-      );
 
-      const data = resp?.data;
-
-      if (!data || data.flag !== '0' || data.result !== 'success') {
-        console.warn('Meta calendar window error:', win, data || resp?.data);
-        continue;
-      }
-
-      const rooms = Array.isArray(data.data)
-        ? data.data
-        : data.data
-        ? [data.data]
-        : [];
+        const rooms = Array.isArray(data.data)
+          ? data.data
+          : data.data
+          ? [data.data]
+          : [];
 
         for (const room of rooms) {
           if (room?.Currency) lastCurrency = room.Currency;
@@ -414,8 +407,11 @@ router.get('/availability', async (req, res) => {
             effectiveMax: roomEffectiveMax,
           });
         }
+        }
       }
-    }
+
+      return { data: { flag: '0', result: 'success' } };
+    });
 
     const requestedDates = eachDateStartInclusiveEndExclusive(startDate, endDate);
 

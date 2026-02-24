@@ -5,7 +5,7 @@ const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
 const crypto = require('crypto');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 const rawBase = (process.env.API_BASE_URL || process.env.CRM_BASE_URL || '').trim();
 const apiBaseUrl = rawBase ? rawBase.replace(/\/+$/, '') + '/' : '';
@@ -131,54 +131,49 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(502).json({ success: false, message: 'Server Error, Please try again later' });
-    }
-
     const hashedPwd = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
 
     const { country, nationality } = resolveCountryAndNationality(bodyCountry, mobilenumberRaw);
     const postalcode = normalizePostalCode(country, bodyPostal);
 
-    const payload = {
-      salutation: 'Mr',
-      Firstname: firstname,
-      Lastname: lastname,
-      Emailaddress: email,
+    const resp = await withProdTokenRetry(async (token) => {
+      const payload = {
+        salutation: 'Mr',
+        Firstname: firstname,
+        Lastname: lastname,
+        Emailaddress: email,
 
-      dateofbirth: safeStr(body.dateofbirth) || '08/08/1988',
+        dateofbirth: safeStr(body.dateofbirth) || '08/08/1988',
 
-      Nationality: safeStr(body.nationality) || nationality,
-      Membershippwd: hashedPwd,
+        Nationality: safeStr(body.nationality) || nationality,
+        Membershippwd: hashedPwd,
 
-      Mailingaddress: safeStr(body.mailingaddress) || 'N/A',
-      Postalcode: postalcode,
-      City: safeStr(body.city) || 'N/A',
-      State: safeStr(body.state) || 'N/A',
-      Country: country,
+        Mailingaddress: safeStr(body.mailingaddress) || 'N/A',
+        Postalcode: postalcode,
+        City: safeStr(body.city) || 'N/A',
+        State: safeStr(body.state) || 'N/A',
+        Country: country,
 
-      // IMPORTANT: raw phone here;
-      Phonenumber: mobilenumberRaw,
-      Mobilenumber: mobilenumberRaw,
+        Phonenumber: mobilenumberRaw,
+        Mobilenumber: mobilenumberRaw,
 
-      Contactpreference: safeStr(body.contactpreference) || 'email',
-      Communicationpreference: safeStr(body.communicationspreference) || '111111',
-      Promotioncode: safeStr(body.promotioncode) || '',
+        Contactpreference: safeStr(body.contactpreference) || 'email',
+        Communicationpreference: safeStr(body.communicationspreference) || '111111',
+        Promotioncode: safeStr(body.promotioncode) || '',
 
-      flag: safeStr(body.flag) || '0',
-      socialMediaType: safeStr(body.socialMediaType) || '1',
+        flag: safeStr(body.flag) || '0',
+        socialMediaType: safeStr(body.socialMediaType) || '1',
 
-      token,
-    };
+        token,
+      };
 
-    const form = qs.stringify(payload, { encodeValuesOnly: true });
+      const form = qs.stringify(payload, { encodeValuesOnly: true });
 
-
-    const resp = await axios.post(`${apiBaseUrl}RegisterMembership`, form, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      httpsAgent,
-      timeout: 30000,
+      return axios.post(`${apiBaseUrl}RegisterMembership`, form, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        httpsAgent,
+        timeout: 30000,
+      });
     });
 
     const data = resp.data || {};

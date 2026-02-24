@@ -1,7 +1,7 @@
 // routes/auth.js
 const express = require('express');
 const router = express.Router();
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
@@ -48,26 +48,17 @@ router.post('/login', async (req, res) => {
   };
 
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({
-        success: false,
-        loggedIn: false,
-        flag: 4,
-        message: 'Could not retrieve access token.',
-      });
-    }
-
     const hashedPwd = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
 
-    const loginUrl = `${API_BASE}LoginthroughEmail?` + qs.stringify({
-      email,
-      membershippwd: hashedPwd,
-      flag: '0',
-      token,
+    const response = await withProdTokenRetry(async (token) => {
+      const loginUrl = `${API_BASE}LoginthroughEmail?` + qs.stringify({
+        email,
+        membershippwd: hashedPwd,
+        flag: '0',
+        token,
+      });
+      return axios.post(loginUrl, {}, { httpsAgent: agent });
     });
-
-    const response = await axios.post(loginUrl, {}, { httpsAgent: agent });
     const upstreamFlag = String(response?.data?.flag ?? '');
 
     // Fallback in case API schema changes

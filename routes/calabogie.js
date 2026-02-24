@@ -1,7 +1,7 @@
 const express = require('express');
-const axios = require('axios');
 const https = require('https');
-const { getToken } = require('../services/getToken');
+const { refreshProdToken, PROD_PROVIDER_KEY } = require('../services/getToken');
+const { postWithProviderToken } = require('../services/metasphereAuth');
 
 const router = express.Router();
 
@@ -189,25 +189,26 @@ const validateDateRangeOr400 = (res, startDate, endDate) => {
   return { start, end };
 };
 
-const fetchStatusRows = async (token, startDate, endDate) => {
+const fetchStatusRows = async (startDate, endDate) => {
   const windows = splitIntoWindows(startDate, endDate, 90);
   const allRows = [];
 
   for (const win of windows) {
-    const resp = await axios.post(
-      `${META_BASE_URL}/GetRateAndStatus_Moblie`,
-      null,
-      {
-        params: {
-          hotelId: CALABOGIE_HOTEL_ID,
-          startTime: win.start,
-          endTime: win.end,
-          token,
-        },
+    const resp = await postWithProviderToken({
+      provider: PROD_PROVIDER_KEY,
+      refreshFn: refreshProdToken,
+      url: `${META_BASE_URL}/GetRateAndStatus_Moblie`,
+      body: null,
+      params: {
+        hotelId: CALABOGIE_HOTEL_ID,
+        startTime: win.start,
+        endTime: win.end,
+      },
+      axiosConfig: {
         httpsAgent,
         timeout: 30000,
-      }
-    );
+      },
+    });
 
     const data = resp?.data;
     if (!data || data.result !== 'success' || data.flag !== '0') continue;
@@ -218,28 +219,29 @@ const fetchStatusRows = async (token, startDate, endDate) => {
   return allRows;
 };
 
-const fetchRateRows = async (token, { startDate, endDate, adults, children, infant, pet, currency }) => {
-  const resp = await axios.post(
-    `${META_BASE_URL}/GetRateAndAvailability_Moblie`,
-    null,
-    {
-      params: {
-        hotelId: CALABOGIE_HOTEL_ID,
-        startDate,
-        endDate,
-        startTime: startDate,
-        endTime: endDate,
-        adults,
-        children,
-        infaut: infant, // upstream key spelling
-        pet,
-        currency,
-        token,
-      },
+const fetchRateRows = async ({ startDate, endDate, adults, children, infant, pet, currency }) => {
+  const resp = await postWithProviderToken({
+    provider: PROD_PROVIDER_KEY,
+    refreshFn: refreshProdToken,
+    url: `${META_BASE_URL}/GetRateAndAvailability_Moblie`,
+    body: null,
+    params: {
+      hotelId: CALABOGIE_HOTEL_ID,
+      startDate,
+      endDate,
+      startTime: startDate,
+      endTime: endDate,
+      adults,
+      children,
+      infaut: infant, // upstream key spelling
+      pet,
+      currency,
+    },
+    axiosConfig: {
       httpsAgent,
       timeout: 30000,
-    }
-  );
+    },
+  });
 
   const data = resp?.data;
   if (!data || data.result !== 'success' || data.flag !== '0') return [];
@@ -360,18 +362,13 @@ const buildAvailabilityContext = ({ rows, startDate, endDate, currency = 'CAD' }
 
 router.get('/room-types', async (req, res) => {
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
     const today = new Date();
     const startDate = today.toISOString().slice(0, 10);
     const end = new Date(today);
     end.setUTCDate(end.getUTCDate() + 30);
     const endDate = end.toISOString().slice(0, 10);
 
-    const rows = await fetchStatusRows(token, startDate, endDate);
+    const rows = await fetchStatusRows(startDate, endDate);
     const map = new Map();
     for (const r of rows) {
       const roomTypeId = String(r?.RoomTypeId || r?.roomTypeId || '').trim();
@@ -412,12 +409,7 @@ router.get('/availability', async (req, res) => {
     const requestedRoomTypeId = String(roomTypeIdRaw || '').trim();
     if (!validateDateRangeOr400(res, startDate, endDate)) return;
 
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
-    const rows = await fetchStatusRows(token, startDate, endDate);
+    const rows = await fetchStatusRows(startDate, endDate);
     const context = buildAvailabilityContext({ rows, startDate, endDate, currency });
 
     const selected =
@@ -478,12 +470,7 @@ router.get('/search', async (req, res) => {
     const petValue = asYesNo(pet, 'no');
     const ccy = String(currency || 'CAD').toUpperCase();
 
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
-    const statusRows = await fetchStatusRows(token, ci, co);
+    const statusRows = await fetchStatusRows(ci, co);
     const context = buildAvailabilityContext({ rows: statusRows, startDate: ci, endDate: co, currency: ccy });
     const totalFrom = Object.values(context.aggregated.dailyPrices).reduce((sum, v) => sum + toNum(v), 0);
     const availableNights = Object.values(context.aggregated.availability).filter((v) => v === 1).length;
@@ -533,12 +520,7 @@ router.get('/results', async (req, res) => {
     const petValue = asYesNo(pet, 'no');
     const ccy = String(currency || 'CAD').toUpperCase();
 
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
-    const statusRows = await fetchStatusRows(token, startDate, endDate);
+    const statusRows = await fetchStatusRows(startDate, endDate);
     const context = buildAvailabilityContext({
       rows: statusRows,
       startDate,
@@ -597,18 +579,13 @@ router.get('/results', async (req, res) => {
 
 router.get('/view-all-rooms', async (_req, res) => {
   try {
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
     const today = new Date();
     const startDate = today.toISOString().slice(0, 10);
     const end = new Date(today);
     end.setUTCDate(end.getUTCDate() + 30);
     const endDate = end.toISOString().slice(0, 10);
 
-    const rows = await fetchStatusRows(token, startDate, endDate);
+    const rows = await fetchStatusRows(startDate, endDate);
     const map = new Map();
     for (const r of rows) {
       const roomTypeId = String(r?.RoomTypeId || r?.roomTypeId || '').trim();
@@ -670,12 +647,7 @@ router.get('/quote', async (req, res) => {
     const petValue = asYesNo(pet, 'no');
     const ccy = String(currency || 'CAD').toUpperCase();
 
-    const token = await getToken();
-    if (!token) {
-      return res.status(500).json({ success: false, message: 'Could not retrieve access token' });
-    }
-
-    const rateRows = await fetchRateRows(token, {
+    const rateRows = await fetchRateRows({
       startDate,
       endDate,
       adults,

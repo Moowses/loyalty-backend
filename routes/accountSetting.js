@@ -5,7 +5,7 @@ const https = require("https");
 const path = require("path");
 const fs = require("fs");
 
-const { getToken } = require("../services/getToken"); 
+const { withProdTokenRetry } = require("../services/getToken"); 
 
 const router = express.Router();
 
@@ -110,40 +110,34 @@ router.post("/account-settings", async (req, res) => {
     validateCountryState({ Country, StateProvince });
 
     // ✅ Get Meta token
-    const token = await getToken();
-    if (!token) {
-      return res
-        .status(500)
-        .json({ result: "error", message: "Token generation failed", meta: null });
-    }
+    const metaResp = await withProdTokenRetry(async (token) => {
+      const params = {
+        token,
+        Title,
+        DateofBirth,
+        FirstName,
+        LastName,
+        Gender,
+        Nationality,
+        Company,
+        DocumentType,
+        Region,
+        Country,
+        StateProvince,
+        Destinations,
+        Phone,
+        ProfileId,
+      };
 
-    const params = {
-      token,
-      Title,
-      DateofBirth,
-      FirstName,
-      LastName,
-      Gender,
-      Nationality,
-      Company,
-      DocumentType,
-      Region,
-      Country,
-      StateProvince,
-      Destinations,
-      Phone,
-      ProfileId,
-    };
+      Object.keys(params).forEach((k) => {
+        if (params[k] === "") delete params[k];
+      });
 
-    // remove empty strings (avoid Meta rejecting)
-    Object.keys(params).forEach((k) => {
-      if (params[k] === "") delete params[k];
-    });
-
-    const metaResp = await axios.get(META_URL, {
-      params,
-      httpsAgent,
-      timeout: 30000,
+      return axios.get(META_URL, {
+        params,
+        httpsAgent,
+        timeout: 30000,
+      });
     });
 
     return res.json({

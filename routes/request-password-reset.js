@@ -4,7 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 const https = require('https');
 const sgMail = require('@sendgrid/mail');
-const { getToken } = require('../services/getToken');
+const { withProdTokenRetry } = require('../services/getToken');
 
 // ---- Config ----
 const apiBaseUrl = (process.env.API_BASE_URL || process.env.CRM_BASE_URL || '').replace(/\/+$/, '') + '/';
@@ -23,12 +23,10 @@ if (process.env.SENDGRID_API_KEY) {
 
 //  Helpers
 async function verifyMember(email) {
-  const token = await getToken();
-  if (!token) throw new Error('Upstream token unavailable');
-
-
-  const url = `${apiBaseUrl}GetPrivateProfile?email=${encodeURIComponent(email)}&flag=0&token=${encodeURIComponent(token)}`;
-  const resp = await axios.post(url, null, { httpsAgent });
+  const resp = await withProdTokenRetry(async (token) => {
+    const url = `${apiBaseUrl}GetPrivateProfile?email=${encodeURIComponent(email)}&flag=0&token=${encodeURIComponent(token)}`;
+    return axios.post(url, null, { httpsAgent });
+  });
   const data = resp?.data || {};
   const isSuccess = String(data?.result || '').toLowerCase() === 'success' && String(data?.flag) === '0';
   return { ok: isSuccess, raw: data };
