@@ -25,6 +25,15 @@ const parseInventoryCount = (value) => {
   return 0;
 };
 
+const normalizeDateOnly = (value) => {
+  const raw = String(value ?? '').trim();
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : raw;
+};
+
+const pickQuoteDate = (quote, primaryKey, fallbackKey) =>
+  normalizeDateOnly(quote?.[primaryKey] || quote?.[fallbackKey] || '');
+
 const isRowAvailable = (row) => {
   const status = String(row?.Status || row?.status || '').trim().toLowerCase();
   const isAvailRaw = row?.isAvailable ?? row?.isavailable ?? row?.Available ?? row?.available;
@@ -315,6 +324,38 @@ function friendlyNmiMessage(nmi = {}) {
       router.post('/confirm', async (req, res) => {
         try {
           const { quote, guest, payment } = req.body;
+          const normalizedHotelId = String(quote?.hotelId || quote?.hotelNo || '').trim();
+          const normalizedRoomTypeId = String(quote?.roomTypeId || '').trim();
+          const normalizedStartTime = pickQuoteDate(quote, 'startTime', 'startDate');
+          const normalizedEndTime = pickQuoteDate(quote, 'endTime', 'endDate');
+
+          console.log('[booking/confirm] incoming quote identifiers', {
+            hotelId: quote?.hotelId || null,
+            hotelNo: quote?.hotelNo || null,
+            roomTypeId: quote?.roomTypeId || null,
+            startTime: quote?.startTime || null,
+            endTime: quote?.endTime || null,
+            startDate: quote?.startDate || null,
+            endDate: quote?.endDate || null,
+            normalizedHotelId,
+            normalizedRoomTypeId,
+            normalizedStartTime,
+            normalizedEndTime,
+          });
+
+          if (!normalizedHotelId || !normalizedRoomTypeId || !normalizedStartTime || !normalizedEndTime) {
+            console.warn('[booking/confirm] missing required quote identifiers', {
+              normalizedHotelId,
+              normalizedRoomTypeId,
+              normalizedStartTime,
+              normalizedEndTime,
+            });
+            return res.status(400).json({
+              success: false,
+              message: 'Missing required quote identifiers (hotelId/hotelNo, roomTypeId, startTime/startDate, endTime/endDate).',
+            });
+          }
+
           if (!payment?.token) {
             return res.status(400).json({ success: false, message: 'Missing payment token' });
           }
@@ -327,16 +368,28 @@ function friendlyNmiMessage(nmi = {}) {
       const allowedValues = new Set([0.5, 1, 5]);  // safe test choices
       const cap           = 5;
 
-      const allowOverride =
-        !!debugSecret &&
-        clientSecret === debugSecret &&
-        allowedValues.has(requested) &&
-        requested <= cap &&
-        process.env.NODE_ENV !== 'production';
+	      const allowOverride =
+	        !!debugSecret &&
+	        clientSecret === debugSecret &&
+	        allowedValues.has(requested) &&
+	        requested <= cap &&
+	        process.env.NODE_ENV !== 'production';
 
-      const chargeAmount = (
-        allowOverride && requested > 0 ? requested : baseAmount
-      ).toFixed(2);
+	      const chargeAmount = (
+	        allowOverride && requested > 0 ? requested : baseAmount
+	      ).toFixed(2);
+
+          console.log('[booking/confirm] payment attempt prepared', {
+            hotelId: normalizedHotelId,
+            roomTypeId: normalizedRoomTypeId,
+            startDate: normalizedStartTime,
+            endDate: normalizedEndTime,
+            guestEmail: guest?.email || null,
+            baseAmount: Number(baseAmount.toFixed ? baseAmount.toFixed(2) : baseAmount),
+            chargeAmount,
+            currency,
+            overrideApplied: allowOverride,
+          });
 
 
     // ---- NMI SALE (classic transact.php) ----
@@ -387,28 +440,49 @@ function friendlyNmiMessage(nmi = {}) {
       nmi.response === '1' ||
       /approved/i.test(nmi.resptext || nmi.responsetext || '');
 
-      if (!approved) {
-      const friendly = friendlyNmiMessage(nmi);
-      return res.status(402).json({
-        success: false,
-        message: friendly,        
-        code: nmi.respcode || nmi.response_code || null,
+	      if (!approved) {
+	      const friendly = friendlyNmiMessage(nmi);
+          console.warn('[booking/confirm] payment declined', {
+            hotelId: normalizedHotelId,
+            roomTypeId: normalizedRoomTypeId,
+            startDate: normalizedStartTime,
+            endDate: normalizedEndTime,
+            chargeAmount,
+            currency,
+            respcode: nmi.respcode || nmi.response_code || null,
+            resptext: nmi.resptext || nmi.responsetext || null,
+            avs: nmi.avsresponse || null,
+            cvv: nmi.cvvresponse || nmi.cvverror || null,
+          });
+	      return res.status(402).json({
+	        success: false,
+	        message: friendly,        
+	        code: nmi.respcode || nmi.response_code || null,
         avs: nmi.avsresponse || null,
         cvv: nmi.cvvresponse || nmi.cvverror || null,
         nmi,                         
       });
     }
 
-    const transactionId = nmi.transactionid || nmi.transaction_id || null;
+	    const transactionId = nmi.transactionid || nmi.transaction_id || null;
+        console.log('[booking/confirm] payment approved', {
+          transactionId,
+          hotelId: normalizedHotelId,
+          roomTypeId: normalizedRoomTypeId,
+          startDate: normalizedStartTime,
+          endDate: normalizedEndTime,
+          chargeAmount,
+          currency,
+        });
 
-    //  CREATE RESERVATION (Metasphere)
-    try {
-      const msResp = await withProdTokenRetry(async (msToken) => {
-        const createPayload = {
-          hotelId: String(quote.hotelId || ''),
-          roomTypeId: String(quote.roomTypeId || ''),
-          startTime: String(quote.startTime || ''),
-          endTime: String(quote.endTime || ''),
+	    //  CREATE RESERVATION (Metasphere)
+	    try {
+	      const msResp = await withProdTokenRetry(async (msToken) => {
+	        const createPayload = {
+          hotelId: normalizedHotelId,
+          roomTypeId: normalizedRoomTypeId,
+          startTime: normalizedStartTime,
+          endTime: normalizedEndTime,
           guestCount: String((+quote.adults || 0) + (+quote.children || 0)),
           FirstName: String(guest.firstName || ''),
           LastName: String(guest.lastName || ''),
@@ -424,12 +498,27 @@ function friendlyNmiMessage(nmi = {}) {
           pets: String(quote.pets || 0),
           totalPrice: String(baseAmount.toFixed(2)),
           currency: currency,
-          membershipNo: String(guest.membershipNo || ''),
-          token: msToken
-        };
+	          membershipNo: String(guest.membershipNo || ''),
+	          token: msToken
+	        };
 
-        const msForm = qs.stringify(createPayload);
-        return axios.post(
+            console.log('[booking/confirm] create reservation payload', {
+              hotelId: createPayload.hotelId,
+              roomTypeId: createPayload.roomTypeId,
+              startTime: createPayload.startTime,
+              endTime: createPayload.endTime,
+              guestCount: createPayload.guestCount,
+              adults: createPayload.adults,
+              children: createPayload.children,
+              infants: createPayload.infants,
+              pets: createPayload.pets,
+              totalPrice: createPayload.totalPrice,
+              currency: createPayload.currency,
+              email: createPayload.Email,
+            });
+
+	        const msForm = qs.stringify(createPayload);
+	        return axios.post(
           apiBaseUrl + 'CreateReservation_Mobile',
           msForm,
           { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
@@ -438,12 +527,37 @@ function friendlyNmiMessage(nmi = {}) {
 
       const reservationNumber =
         msResp?.data?.data?.ReservationNumber ||
-        msResp?.data?.ReservationNumber || null;
+        msResp?.data?.data?.reservationNumber ||
+        msResp?.data?.ReservationNumber ||
+        msResp?.data?.reservationNumber ||
+        (Array.isArray(msResp?.data?.data) ? (
+          msResp.data.data[0]?.ReservationNumber || msResp.data.data[0]?.reservationNumber
+        ) : null) ||
+        null;
 
-      if (!reservationNumber) {
-        return res.status(200).json({
-          success: true,
-          payment: { transactionId, nmi },
+          console.log('[booking/confirm] metasphere response summary', {
+            transactionId,
+            hotelId: normalizedHotelId,
+            roomTypeId: normalizedRoomTypeId,
+            startDate: normalizedStartTime,
+            endDate: normalizedEndTime,
+            reservationNumber,
+            result: msResp?.data?.result || null,
+            flag: msResp?.data?.flag || null,
+            message: msResp?.data?.message || msResp?.data?.data || null,
+          });
+
+	      if (!reservationNumber) {
+            console.warn('[booking/confirm] payment captured but reservation number missing', {
+              transactionId,
+              hotelId: normalizedHotelId,
+              roomTypeId: normalizedRoomTypeId,
+              startDate: normalizedStartTime,
+              endDate: normalizedEndTime,
+            });
+	        return res.status(200).json({
+	          success: true,
+	          payment: { transactionId, nmi },
           reservation: msResp?.data || null,
           warning: 'Payment captured, but reservationNumber missing from Metasphere response.'
         });
@@ -456,11 +570,18 @@ function friendlyNmiMessage(nmi = {}) {
         reservation: { reservationNumber }
       });
 
-    } catch (e) {
-      console.error('Metasphere reservation error:', e.response?.data || e.message);
-      return res.status(200).json({
-        success: true,
-        payment: { transactionId, nmi },
+	    } catch (e) {
+	      console.error('Metasphere reservation error:', e.response?.data || e.message);
+          console.error('[booking/confirm] reservation create failed after payment', {
+            transactionId,
+            hotelId: normalizedHotelId,
+            roomTypeId: normalizedRoomTypeId,
+            startDate: normalizedStartTime,
+            endDate: normalizedEndTime,
+          });
+	      return res.status(200).json({
+	        success: true,
+	        payment: { transactionId, nmi },
         warning: 'Payment captured, but Metasphere reservation failed.',
         metasphereError: e.response?.data || e.message
       });
