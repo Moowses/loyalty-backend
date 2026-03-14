@@ -266,12 +266,16 @@ const buildAvailabilityContext = ({ rows, startDate, endDate, currency = 'CAD' }
       byRoomType[rtId] = {
         roomTypeId: rtId,
         roomTypeName: rtName,
+        capacity: room?.Capacity ?? room?.capacity ?? null,
         byDate: {},
         defaults: { minNights: null, maxNights: null },
         currencyCode: room?.Currency || null,
       };
     } else if (!byRoomType[rtId].roomTypeName && rtName) {
       byRoomType[rtId].roomTypeName = rtName;
+      if (byRoomType[rtId].capacity == null) {
+        byRoomType[rtId].capacity = room?.Capacity ?? room?.capacity ?? null;
+      }
     }
     const roomAgg = byRoomType[rtId];
 
@@ -340,6 +344,7 @@ const buildAvailabilityContext = ({ rows, startDate, endDate, currency = 'CAD' }
     normalizedByRoomType[rt.roomTypeId] = {
       roomTypeId: rt.roomTypeId,
       roomTypeName: rt.roomTypeName,
+      capacity: rt.capacity,
       currencyCode: rt.currencyCode || lastCurrency,
       ...normalizeByDateMap(rt.byDate, rt.defaults, requestedDates),
     };
@@ -520,13 +525,30 @@ router.get('/results', async (req, res) => {
     const petValue = asYesNo(pet, 'no');
     const ccy = String(currency || 'CAD').toUpperCase();
 
-    const statusRows = await fetchStatusRows(startDate, endDate);
+    const [statusRows, rateRows] = await Promise.all([
+      fetchStatusRows(startDate, endDate),
+      fetchRateRows({
+        startDate,
+        endDate,
+        adults,
+        children,
+        infant: infants,
+        pet: petValue,
+        currency: ccy,
+      }),
+    ]);
     const context = buildAvailabilityContext({
       rows: statusRows,
       startDate,
       endDate,
       currency: ccy,
     });
+    const capacityByRoomType = new Map(
+      rateRows.map((row) => [
+        String(row?.RoomTypeId || row?.roomTypeId || '').trim(),
+        row?.Capacity ?? row?.capacity ?? null,
+      ])
+    );
 
     const rows = context.roomTypes.map((rt) => {
       const normalized = context.normalizedByRoomType[rt.roomTypeId] || {
@@ -542,6 +564,7 @@ router.get('/results', async (req, res) => {
         hotelNo: CALABOGIE_HOTEL_ID,
         roomTypeId: rt.roomTypeId,
         roomTypeName: rt.roomTypeName,
+        capacity: normalized.capacity ?? capacityByRoomType.get(rt.roomTypeId) ?? null,
         currencyCode: normalized.currencyCode || ccy,
         dailyPrices: normalized.dailyPrices,
         availability: normalized.availability,
