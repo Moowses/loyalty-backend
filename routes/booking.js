@@ -34,6 +34,70 @@ const normalizeDateOnly = (value) => {
 const pickQuoteDate = (quote, primaryKey, fallbackKey) =>
   normalizeDateOnly(quote?.[primaryKey] || quote?.[fallbackKey] || '');
 
+const trimString = (value) => String(value ?? '').trim();
+
+const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
+
+const assignIfPresent = (target, key, value) => {
+  const normalized = trimString(value);
+  if (normalized) {
+    target[key] = normalized;
+  }
+};
+
+function buildCreateReservationPayload(input = {}, { token, defaultDescription } = {}) {
+  const normalizedHotelId = trimString(firstDefined(input.hotelId, input.hotelNo));
+  const normalizedRoomTypeId = trimString(input.roomTypeId);
+  const normalizedStartTime = normalizeDateOnly(firstDefined(input.startTime, input.startDate));
+  const normalizedEndTime = normalizeDateOnly(firstDefined(input.endTime, input.endDate));
+  const adults = String(firstDefined(input.adults, input.adult, 0));
+  const children = String(firstDefined(input.children, input.child, 0));
+  const infants = String(firstDefined(input.infants, input.infant, 0));
+  const pets = String(firstDefined(input.pets, input.pet, 0));
+  const guestCountRaw = firstDefined(
+    input.guestCount,
+    input.GuestCount,
+    (+adults || 0) + (+children || 0)
+  );
+  const description = firstDefined(input.description, defaultDescription);
+
+  const payload = {
+    hotelId: normalizedHotelId,
+    roomTypeId: normalizedRoomTypeId,
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
+    guestCount: String(guestCountRaw),
+    FirstName: String(firstDefined(input.FirstName, input.firstName, '')),
+    LastName: String(firstDefined(input.LastName, input.lastName, '')),
+    Email: String(firstDefined(input.Email, input.email, '')),
+    phone: String(firstDefined(input.phone, input.Phone, '')),
+    guestCountry: String(firstDefined(input.guestCountry, input.country, input.guestContry, '')),
+    guestCity: String(firstDefined(input.guestCity, input.city, '')),
+    guestAddress: String(firstDefined(input.guestAddress, input.address, '')),
+    adults,
+    children,
+    infants,
+    pets,
+    totalPrice: String(firstDefined(input.totalPrice, input.TotalPrice, '')),
+    currency: String(firstDefined(input.currency, input.Currency, '')),
+    token,
+  };
+
+  assignIfPresent(payload, 'membershipNo', firstDefined(input.membershipNo, input.MembershipNo));
+  assignIfPresent(payload, 'description', description);
+  assignIfPresent(payload, 'referralCode', firstDefined(input.referralCode, input.ReferralCode));
+
+  return payload;
+}
+
+function postCreateReservation(payload) {
+  return axios.post(
+    apiBaseUrl + 'CreateReservation_Mobile',
+    qs.stringify(payload),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
+  );
+}
+
 const isRowAvailable = (row) => {
   const status = String(row?.Status || row?.status || '').trim().toLowerCase();
   const isAvailRaw = row?.isAvailable ?? row?.isavailable ?? row?.Available ?? row?.available;
@@ -478,52 +542,54 @@ function friendlyNmiMessage(nmi = {}) {
 	    //  CREATE RESERVATION (Metasphere)
 	    try {
 	      const msResp = await withProdTokenRetry(async (msToken) => {
-	        const createPayload = {
-          hotelId: normalizedHotelId,
-          roomTypeId: normalizedRoomTypeId,
-          startTime: normalizedStartTime,
-          endTime: normalizedEndTime,
-          guestCount: String((+quote.adults || 0) + (+quote.children || 0)),
-          FirstName: String(guest.firstName || ''),
-          LastName: String(guest.lastName || ''),
-          Email: String(guest.email || ''),
-          phone: String(guest.phone || ''),
-          guestCountry: String(guest.country || ''),
-          guestCity: String(guest.city || ''),
-          guestAddress: String(guest.address || ''),
-          description: 'Web booking',
-          adults: String(quote.adults || 0),
-          children: String(quote.children || 0),
-          infants: String(quote.infants || 0),
-          pets: String(quote.pets || 0),
-          totalPrice: String(baseAmount.toFixed(2)),
-          currency: currency,
-	          membershipNo: String(guest.membershipNo || ''),
-	          token: msToken
-	        };
+	        const createPayload = buildCreateReservationPayload(
+	          {
+	            hotelId: normalizedHotelId,
+	            roomTypeId: normalizedRoomTypeId,
+	            startTime: normalizedStartTime,
+	            endTime: normalizedEndTime,
+	            guestCount: String((+quote.adults || 0) + (+quote.children || 0)),
+	            firstName: guest?.firstName,
+	            lastName: guest?.lastName,
+	            email: guest?.email,
+	            phone: guest?.phone,
+	            country: guest?.country,
+	            city: guest?.city,
+	            address: guest?.address,
+	            adults: quote?.adults,
+	            children: quote?.children,
+	            infants: quote?.infants,
+	            pets: quote?.pets,
+	            totalPrice: baseAmount.toFixed(2),
+	            currency,
+	            membershipNo: guest?.membershipNo,
+	            description: firstDefined(req.body?.description, quote?.description, guest?.description),
+	            referralCode: firstDefined(req.body?.referralCode, quote?.referralCode, guest?.referralCode),
+	          },
+	          {
+	            token: msToken,
+	            defaultDescription: 'Web booking',
+	          }
+	        );
 
-            console.log('[booking/confirm] create reservation payload', {
-              hotelId: createPayload.hotelId,
-              roomTypeId: createPayload.roomTypeId,
+	            console.log('[booking/confirm] create reservation payload', {
+	              hotelId: createPayload.hotelId,
+	              roomTypeId: createPayload.roomTypeId,
               startTime: createPayload.startTime,
               endTime: createPayload.endTime,
               guestCount: createPayload.guestCount,
               adults: createPayload.adults,
               children: createPayload.children,
-              infants: createPayload.infants,
-              pets: createPayload.pets,
-              totalPrice: createPayload.totalPrice,
-              currency: createPayload.currency,
-              email: createPayload.Email,
-            });
+	              infants: createPayload.infants,
+	              pets: createPayload.pets,
+	              totalPrice: createPayload.totalPrice,
+	              currency: createPayload.currency,
+	              descriptionIncluded: Object.prototype.hasOwnProperty.call(createPayload, 'description'),
+	              referralCodeIncluded: Object.prototype.hasOwnProperty.call(createPayload, 'referralCode'),
+	            });
 
-	        const msForm = qs.stringify(createPayload);
-	        return axios.post(
-          apiBaseUrl + 'CreateReservation_Mobile',
-          msForm,
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
-        );
-      });
+		        return postCreateReservation(createPayload);
+	      });
 
       const reservationNumber =
         msResp?.data?.data?.ReservationNumber ||
@@ -628,22 +694,35 @@ router.post('/check-member', async (req, res) => {
  * If some legacy client still calls this, keep it—but recommend using /confirm.
  */
 router.post('/create-reservation', async (req, res) => {
-  const bookingData = req.body;
-  if (!bookingData || typeof bookingData !== 'object') {
-    return res.status(400).json({ success: false, message: 'Booking data required' });
-  }
+	  const bookingData = req.body;
+	  if (!bookingData || typeof bookingData !== 'object') {
+	    return res.status(400).json({ success: false, message: 'Booking data required' });
+	  }
 
-  try {
-    const response = await withProdTokenRetry((token) => {
-      const payload = { ...bookingData, token };
-      return axios.post(
-        apiBaseUrl + 'CreateReservation_Mobile',
-        qs.stringify(payload),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, httpsAgent }
-      );
-    });
+	  try {
+	    const response = await withProdTokenRetry((token) => {
+	      const payload = buildCreateReservationPayload(bookingData, { token });
 
-    return res.json({ success: true, data: response.data });
+	      console.log('[booking/create-reservation] payload summary', {
+	        hotelId: payload.hotelId,
+	        roomTypeId: payload.roomTypeId,
+	        startTime: payload.startTime,
+	        endTime: payload.endTime,
+	        guestCount: payload.guestCount,
+	        adults: payload.adults,
+	        children: payload.children,
+	        infants: payload.infants,
+	        pets: payload.pets,
+	        totalPrice: payload.totalPrice,
+	        currency: payload.currency,
+	        descriptionIncluded: Object.prototype.hasOwnProperty.call(payload, 'description'),
+	        referralCodeIncluded: Object.prototype.hasOwnProperty.call(payload, 'referralCode'),
+	      });
+
+	      return postCreateReservation(payload);
+	    });
+
+	    return res.json({ success: true, data: response.data });
   } catch (err) {
     console.error('Create Reservation error:', err.response?.data || err.message);
     return res.status(500).json({ success: false, message: 'Failed to create reservation', error: err.response?.data || err.message });
