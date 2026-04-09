@@ -423,9 +423,17 @@ function friendlyNmiMessage(nmi = {}) {
           if (!payment?.token) {
             return res.status(400).json({ success: false, message: 'Missing payment token' });
           }
-        const baseAmount =
-        Number(quote?.grossAmount || 0) + Number(quote?.petFeeAmount || 0);
-      const currency = String(quote?.currency || 'CAD');
+	        const retailAmount =
+	        Number(quote?.grandTotal || 0) ||
+	        Number(quote?.grossAmount || 0) +
+	          Number(quote?.petFeeAmount || 0) +
+	          Number(quote?.cleaningFeeAmount || 0) +
+	          Number(quote?.vatAmount || 0);
+	      const baseAmount =
+	        Number(quote?.chargeTotal || 0) ||
+	        Number(quote?.memberTotal || 0) ||
+	        retailAmount;
+	      const currency = String(quote?.currency || 'CAD');
       const debugSecret   = process.env.NMI_OVERRIDE_SECRET; // leave UNSET in prod
       const clientSecret  = req.get('x-debug-override');
       const requested     = Number(req.body?.overrideAmount);
@@ -443,13 +451,14 @@ function friendlyNmiMessage(nmi = {}) {
 	        allowOverride && requested > 0 ? requested : baseAmount
 	      ).toFixed(2);
 
-          console.log('[booking/confirm] payment attempt prepared', {
+	          console.log('[booking/confirm] payment attempt prepared', {
             hotelId: normalizedHotelId,
             roomTypeId: normalizedRoomTypeId,
             startDate: normalizedStartTime,
             endDate: normalizedEndTime,
             guestEmail: guest?.email || null,
-            baseAmount: Number(baseAmount.toFixed ? baseAmount.toFixed(2) : baseAmount),
+	            retailAmount: Number(retailAmount.toFixed ? retailAmount.toFixed(2) : retailAmount),
+	            baseAmount: Number(baseAmount.toFixed ? baseAmount.toFixed(2) : baseAmount),
             chargeAmount,
             currency,
             overrideApplied: allowOverride,
@@ -560,7 +569,7 @@ function friendlyNmiMessage(nmi = {}) {
 	            children: quote?.children,
 	            infants: quote?.infants,
 	            pets: quote?.pets,
-	            totalPrice: baseAmount.toFixed(2),
+		            totalPrice: chargeAmount,
 	            currency,
 	            membershipNo: guest?.membershipNo,
 	            description: firstDefined(req.body?.description, quote?.description, guest?.description),
