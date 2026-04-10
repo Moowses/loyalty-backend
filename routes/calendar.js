@@ -247,19 +247,13 @@ router.get('/availability', async (req, res) => {
       });
     }
 
-    // Strict validation when both identifiers are provided.
     const hotelNo = String(hotelNoRaw || '').trim();
     const hotelId = String(hotelIdRaw || '').trim();
-    if (hotelNo && hotelId && hotelNo !== hotelId) {
-      return res.status(400).json({
-        success: false,
-        message: 'hotelNo and hotelId mismatch. Provide one hotel identifier or matching values.',
-      });
-    }
 
-    // Meta expects hotel identifier in the hotelId param (code or numeric string).
+    // Frontend may send both a local numeric hotelId and a Meta hotel code.
+    // Prefer hotelNo for upstream calls because Meta accepts that stable property code.
     const requestedHotelId = hotelNo || hotelId;
-    const idForUpstream = requestedHotelId;
+    const idForUpstream = hotelNo || hotelId;
 
     const CCY = String(currency || 'CAD').toUpperCase();
 
