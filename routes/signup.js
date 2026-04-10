@@ -5,6 +5,8 @@ const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { withProdTokenRetry } = require('../services/getToken');
 
 const rawBase = (process.env.API_BASE_URL || process.env.CRM_BASE_URL || '').trim();
@@ -14,6 +16,8 @@ const httpsAgent =
   String(process.env.ALLOW_INSECURE_SSL || 'false') === 'true'
     ? new https.Agent({ rejectUnauthorized: false })
     : undefined;
+
+let COUNTRY_CODE_TO_NAME = null;
 
 // ---- helpers ----
 function safeStr(v) {
@@ -44,6 +48,31 @@ function normalizePhoneRaw(input) {
   return v;
 }
 
+function loadCountryCodeMap() {
+  if (COUNTRY_CODE_TO_NAME) return COUNTRY_CODE_TO_NAME;
+
+  const map = new Map();
+  try {
+    const csvPath = path.join(__dirname, '..', 'data', 'country_state.csv');
+    const raw = fs.readFileSync(csvPath, 'utf8');
+    const lines = raw.split(/\r?\n/).filter(Boolean);
+    lines.shift();
+
+    for (const line of lines) {
+      const [countryName, _stateProvince, countryCode] = line
+        .split(',')
+        .map((s) => String(s ?? '').trim());
+      if (!countryName || !countryCode || map.has(countryCode.toUpperCase())) continue;
+      map.set(countryCode.toUpperCase(), countryName);
+    }
+  } catch (err) {
+    console.warn('[signup] Failed to load country_state.csv:', err.message);
+  }
+
+  COUNTRY_CODE_TO_NAME = map;
+  return map;
+}
+
 function dialCodeFromPhone(raw) {
   const v = safeStr(raw).replace(/\s+/g, '');
   if (v.startsWith('+63')) return '+63';
@@ -51,6 +80,18 @@ function dialCodeFromPhone(raw) {
   if (v.startsWith('+44')) return '+44';
   if (v.startsWith('+61')) return '+61';
   return '';
+}
+
+function normalizeCountryName(input) {
+  const raw = safeStr(input);
+  if (!raw) return '';
+
+  const code = raw.toUpperCase();
+  if (/^[A-Z]{2}$/.test(code)) {
+    return loadCountryCodeMap().get(code) || raw;
+  }
+
+  return raw;
 }
 
 /**
@@ -61,7 +102,7 @@ function dialCodeFromPhone(raw) {
  * Fallback -> Canada
  */
 function resolveCountryAndNationality(bodyCountry, phoneRaw) {
-  const c = safeStr(bodyCountry);
+  const c = normalizeCountryName(bodyCountry);
 
   if (c) {
     const country = c;
@@ -94,6 +135,33 @@ function normalizePostalCode(country, postal) {
   return p;
 }
 
+function normalizeDateOfBirth(input) {
+  const raw = safeStr(input);
+  if (!raw) return '08/08/1988';
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, yyyy, mm, dd] = isoMatch;
+    const dt = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+    if (!Number.isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === `${yyyy}-${mm}-${dd}`) {
+      return `${mm}/${dd}/${yyyy}`;
+    }
+  }
+
+  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, mm, dd, yyyy] = slashMatch;
+    const dt = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+    if (!Number.isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === `${yyyy}-${mm}-${dd}`) {
+      return `${mm}/${dd}/${yyyy}`;
+    }
+  }
+
+  const err = new Error('Invalid dateofbirth. Expected YYYY-MM-DD.');
+  err.status = 400;
+  throw err;
+}
+
 function mapFlagToMessage(flag) {
   const f = String(flag ?? '');
   const map = {
@@ -116,11 +184,12 @@ router.post('/', async (req, res) => {
   const mobilenumberRaw = normalizePhoneRaw(body.mobilenumber);
 
  
-  const bodyCountry = safeStr(body.country);
-  const bodyPostal  = safeStr(body.postalcode);
+	  const bodyCountry = safeStr(body.country);
+	  const bodyPostal  = safeStr(body.postalcode);
+    const dateofbirth = normalizeDateOfBirth(body.dateofbirth);
 
-  if (!firstname || !lastname || !email || !mobilenumberRaw || !password) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
+	  if (!firstname || !lastname || !email || !mobilenumberRaw || !password) {
+	    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
   if (!apiBaseUrl) {
@@ -139,11 +208,11 @@ router.post('/', async (req, res) => {
     const resp = await withProdTokenRetry(async (token) => {
       const payload = {
         salutation: 'Mr',
-        Firstname: firstname,
-        Lastname: lastname,
-        Emailaddress: email,
+	        Firstname: firstname,
+	        Lastname: lastname,
+	        Emailaddress: email,
 
-        dateofbirth: safeStr(body.dateofbirth) || '08/08/1988',
+	        dateofbirth,
 
         Nationality: safeStr(body.nationality) || nationality,
         Membershippwd: hashedPwd,

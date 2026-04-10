@@ -114,6 +114,23 @@ function optionalField(body, key) {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
+function optionalDateField(body, key, label = key) {
+  const value = optionalField(body, key);
+  if (!value) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const e = new Error(`Invalid ${label}. Expected YYYY-MM-DD.`);
+    e.status = 400;
+    throw e;
+  }
+  const dt = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime()) || dt.toISOString().slice(0, 10) !== value) {
+    const e = new Error(`Invalid ${label}. Expected YYYY-MM-DD.`);
+    e.status = 400;
+    throw e;
+  }
+  return value;
+}
+
 function validateCountryState({ Country, StateProvince }) {
   if (!COUNTRY_STATE_INDEX) {
     return { Country, StateProvince };
@@ -249,6 +266,7 @@ router.post("/account-settings", async (req, res) => {
     const AddressLine2 = optionalField(req.body, "AddressLine2");
     const City = optionalField(req.body, "City");
     const PostalCode = optionalField(req.body, "PostalCode");
+    const DateofBirth = optionalDateField(req.body, "DateofBirth");
     const Region = optionalField(req.body, "Region") || StateProvince;
 
     const normalizedLocation = validateCountryState({ Country, StateProvince });
@@ -276,6 +294,7 @@ router.post("/account-settings", async (req, res) => {
         Address2: AddressLine2,
         City,
         Postalcode: PostalCode,
+        DateofBirth,
       };
 
       Object.keys(params).forEach((key) => {
