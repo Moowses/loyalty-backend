@@ -58,6 +58,37 @@ function normalizeLookupValue(value) {
     .toLowerCase();
 }
 
+function parseCsvTriple(line) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  values.push(current.trim());
+  return values.map((value) => value.replace(/^"|"$/g, "").trim());
+}
+
 function loadCountryStateCSV() {
   try {
     const csvPath = path.join(__dirname, "..", "data", "country_state.csv");
@@ -68,9 +99,7 @@ function loadCountryStateCSV() {
 
     const byCountryCode = new Map();
     for (const line of lines) {
-      const [countryName, stateProvince, countryCode] = line
-        .split(",")
-        .map((s) => (s ?? "").trim());
+      const [countryName, stateProvince, countryCode] = parseCsvTriple(line);
 
       if (!countryName || !stateProvince || !countryCode) continue;
 
@@ -262,6 +291,8 @@ router.post("/account-settings", async (req, res) => {
     const StateProvince = requireField(req.body, "StateProvince");
 
     const Gender = optionalField(req.body, "Gender");
+    const Nationality = optionalField(req.body, "Nationality");
+    const NationalityCode = optionalField(req.body, "NationalityCode");
     const AddressLine1 = optionalField(req.body, "AddressLine1");
     const AddressLine2 = optionalField(req.body, "AddressLine2");
     const City = optionalField(req.body, "City");
@@ -282,6 +313,8 @@ router.post("/account-settings", async (req, res) => {
         FirstName,
         LastName,
         Gender,
+        Nationality,
+        NationalityCode: NationalityCode || normalizedCountry,
         Country: normalizedCountry,
         StateProvince: normalizedStateProvince,
         State: normalizedStateProvince,
